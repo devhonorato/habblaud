@@ -584,6 +584,8 @@ Codex sessions (CLI or app) show up like Claude Code's: character, project room,
 subagents, terminal and history, 5-hour and weekly usage and **My day** (tokens only: Codex doesn't report cost). The
 Codex account chip is hollow and carries the **CODEX** tag.
 
+**Hermes Agent** (NousResearch): with `HABBLAUD_HERMES_DIR` pointing to Hermes's data directory, each profile becomes a room with a permanent agent and the cron routines show up live, read-only (see [`server/sources/hermes/README.md`](server/sources/hermes/README.md)).
+
 - **Without installing anything**, Habblaud reads the files Codex itself writes (the conversations in `~/.codex/sessions` and the
   locks of the open sessions in `~/.codex/thread-writer-locks`). The catch is that Codex writes each step **after** it
   finishes and never writes "waiting on you": without the hooks, the office shows Codex with a delay and doesn't tell you when it

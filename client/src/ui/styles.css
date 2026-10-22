@@ -365,6 +365,15 @@
   --step: 3px;
 }
 
+/* Conta do Hermes Agent: chip redondo com aro escuro, para não confundir com as contas do Claude Code (quadradas) nem
+   com as do Codex (vazadas). */
+.ui-acc-chip[data-provider='hermes'] {
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 2px rgba(22, 27, 38, 0.55),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.24);
+}
+
 /* Selo de texto "Codex" ao lado do nome da conta (fonte do sistema: na Pixelify o "C" parece "O"). */
 .ui-prov {
   display: inline-flex;

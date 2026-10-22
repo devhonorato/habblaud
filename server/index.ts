@@ -37,6 +37,7 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { HermesSource } from './sources/hermes/source';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
 import { getLocale, tr } from '../shared/i18n';
@@ -141,6 +142,10 @@ if (codex) agents.add(codex);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
+// Hermes Agent (sources/hermes/): só com HABBLAUD_HERMES_DIR, o diretório de dados dele (somente leitura). Cada perfil
+// vira uma sala com um agente permanente. As cópias dos bancos (quando não dá para lê-los no lugar) ficam no dataDir.
+const hermes = config.hermesDir ? new HermesSource({ accounts, office, dir: config.hermesDir, tmpDir: join(config.dataDir, 'hermes-cache') }) : undefined;
+if (hermes) agents.add(hermes);
 late.office = office;
 late.agents = agents;
 // Página que pode responder pelo escritório: Host local na porta local; na remota, só com permissions liberado.
@@ -472,7 +477,8 @@ server.listen(config.port, config.host, () => {
   const host = config.host === '0.0.0.0' || config.host === '::' ? 'localhost' : config.host;
   log.info(tr('🏢 Habblaud {0}{1}{2} em http://{3}:{4}', [config.version, config.dev ? ' (dev)' : '', config.inDocker ? ' (docker)' : '', host, config.port]));
   const list = accounts.entries();
-  if (!list.length) log.warn(tr('Nenhuma pasta do Claude Code encontrada (defina HABBLAUD_CLAUDE_DIRS).'));
+  // Só com o Hermes (ex.: o container ao lado dele, sem conta do Claude Code nem do Codex) não é um problema: só informa.
+  if (!list.length) (hermes ? log.info : log.warn)(tr('Nenhuma pasta do Claude Code encontrada (defina HABBLAUD_CLAUDE_DIRS).'));
   for (const dir of codexDirsRefused(process.env, config.home)) {
     log.warn(tr('{0} é uma pasta do Codex, não do Claude Code: fica fora das contas do Claude Code.', [dir]));
   }
@@ -490,6 +496,14 @@ server.listen(config.port, config.host, () => {
     }
   } else {
     log.info(tr('   Codex: {0}.', [config.codex ? tr('nenhuma pasta do Codex encontrada (defina HABBLAUD_CODEX_DIRS)') : tr('desligado (HABBLAUD_CODEX=0)')]));
+  }
+  if (hermes) {
+    const src = hermes.sources()[0];
+    log.info(
+      src?.ok
+        ? tr('   Hermes: {0} perfil(is) em {1}.', [hermes.profileCount(), config.hermesDir])
+        : tr('   Hermes: {0} ({1}).', [src?.error ?? tr('sem dados'), config.hermesDir]),
+    );
   }
   if (office.isDemo()) log.info(tr('   Modo demonstração ligado (agentes simulados misturados aos reais).'));
   if (config.terminal) log.info(tr('   Terminal: ligado (acesso só local).'));
@@ -511,7 +525,8 @@ server.listen(config.port, config.host, () => {
       ? tr('   Mensagens pelo escritório: ligadas (precisa do plugin habblaud-mensagens: npm run mod:install).')
       : tr('   Mensagens pelo escritório: desligadas ({0}).', [messagesOffReason(process.env, config.host, config.inDocker)]),
   );
-  if (config.messages) {
+  // Sem nenhuma conta do Codex (ex.: o container só com o Hermes), a linha das mensagens ao Codex não diz nada útil.
+  if (config.messages && codex) {
     log.info(
       codexBin
         ? tr('   Mensagens ao Codex: pelo codex queue ({0}).', [codexBin])

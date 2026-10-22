@@ -9,7 +9,8 @@ import { tr } from '../../../shared/i18n';
 
 /**
  * Chip quadrado com a letra curta da conta ("C", "D") na cor da conta. Conta do Codex: o chip fica vazado (fundo
- * escuro, borda e letra na cor da conta, cantos em degrau): `data-provider="codex"`.
+ * escuro, borda e letra na cor da conta, cantos em degrau): `data-provider="codex"`. Conta do Hermes: chip redondo,
+ * `data-provider="hermes"`.
  */
 export function createAccountChip(size: 'sm' | 'md' | 'lg' = 'sm'): HTMLElement {
   return h('span', { class: `ui-acc-chip ui-acc-chip--${size}` });
@@ -20,7 +21,7 @@ export function updateAccountChip(chip: HTMLElement, account: AccountInfo | unde
   const p = accountProvider(account, fallbackId, provider);
   setText(chip, account?.short ?? fallbackShort(fallbackId, p));
   setStyleVar(chip, '--acc', account?.color ?? '#8b98b3');
-  setAttr(chip, 'data-provider', p === 'codex' ? 'codex' : null);
+  setAttr(chip, 'data-provider', p === 'claude' ? null : p);
   const label = accountChipLabel(account, fallbackId, p);
   setTitle(chip, label);
   setAttr(chip, 'aria-label', label);
@@ -31,8 +32,11 @@ export function createProviderTag(extra = ''): HTMLElement {
   return h('span', { class: `ui-prov${extra ? ` ${extra}` : ''}`, text: 'Codex', hidden: true, title: tr('Agente do Codex (OpenAI)') });
 }
 
-/** Mostra o selo só para o Codex (e não repete quando o nome da conta já diz "Codex"). */
+/** Mostra o selo só fora do Claude Code (e não repete quando o nome da conta já diz qual é a ferramenta). */
 export function updateProviderTag(tag: HTMLElement, provider: Provider, accountName = ''): void {
+  const hermes = provider === 'hermes';
+  setText(tag, hermes ? 'Hermes' : 'Codex');
+  setTitle(tag, hermes ? tr('Agente do Hermes (NousResearch)') : tr('Agente do Codex (OpenAI)'));
   setHidden(tag, !showsProviderTag(provider, accountName));
 }
 

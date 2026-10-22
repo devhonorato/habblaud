@@ -108,6 +108,13 @@ type Item = Bubble | Label;
 const CODEX_CHIP_BG = '#161b26';
 /** Selo "CODEX" das etiquetas: discreto (vidro claro), sem a cor de ninguém. */
 const CODEX_BADGE = 'CODEX';
+/** Selo dos agentes do Hermes Agent (o chip da conta já é a bolinha cheia, na cor dourada da conta). */
+const HERMES_BADGE = 'HERMES';
+
+/** Selo de ferramenta ao lado do nome ('' = Claude Code, sem selo). */
+function providerBadge(provider: string | undefined): string {
+  return provider === 'codex' ? CODEX_BADGE : provider === 'hermes' ? HERMES_BADGE : '';
+}
 
 /** Octógono "em degrau" (um quadrado de cantos cortados, como um pixel arredondado). */
 function steppedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, s: number): void {
@@ -868,7 +875,7 @@ export class Overlay {
 
   // =================================================================== etiquetas
 
-  /** Larguras das partes da etiqueta. O selo "CODEX" (como o "SUB") só aparece fora do modo compacto. */
+  /** Larguras das partes da etiqueta. O selo "CODEX"/"HERMES" (como o "SUB") só aparece fora do modo compacto. */
   private labelWidth(l: Label): { nameW: number; chipW: number; badgeW: number; codexW: number } {
     const ch = l.ch;
     const acc = this.sim.accounts.get(ch.info.account);
@@ -876,7 +883,8 @@ export class Overlay {
     const chipW = acc ? 13 : 0;
     const visitor = ch === this.sim.visitor;
     const badgeW = visitor ? this.measure(BADGE_FONT, visitorBadge()) + 7 : ch.info.kind === 'sub' && !l.compact ? this.measure(BADGE_FONT, 'SUB') + 7 : 0;
-    const codexW = ch.info.provider === 'codex' && !l.compact ? this.measure(BADGE_FONT, CODEX_BADGE) + 7 : 0;
+    const prov = providerBadge(ch.info.provider);
+    const codexW = prov && !l.compact ? this.measure(BADGE_FONT, prov) + 7 : 0;
     return { nameW, chipW, badgeW, codexW };
   }
 
@@ -970,7 +978,7 @@ export class Overlay {
       ctx.fill();
       ctx.font = BADGE_FONT;
       ctx.fillStyle = '#e8ecf5';
-      ctx.fillText(CODEX_BADGE, cx + 3.5, y + h / 2 + 0.5);
+      ctx.fillText(providerBadge(ch.info.provider), cx + 3.5, y + h / 2 + 0.5);
     }
   }
 }

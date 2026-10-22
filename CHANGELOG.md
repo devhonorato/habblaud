@@ -10,6 +10,14 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Hermes Agent no escritório.** Com `HABBLAUD_HERMES_DIR` apontando para o diretório de dados do Hermes Agent
+  (NousResearch), cada perfil vira uma sala com um agente permanente: trabalha quando uma rotina do cron roda ou há
+  mensagens novas, sai quando o gateway para, e as ferramentas aparecem em português ("Lendo o radar", "Rodando
+  backtest de UNIUSDT"). Os bancos SQLite do Hermes são lidos sem escrever nada, também com a pasta montada `:ro` no
+  Docker. O servidor sobe só com o Hermes, sem conta do Claude Code nem do Codex.
+
 ## [1.0.3] - 2026-10-16
 
 ### Corrigido

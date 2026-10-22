@@ -582,6 +582,8 @@ As sessões do Codex (CLI ou app) aparecem como as do Claude Code: personagem, s
 subagentes, terminal e histórico, uso de 5 horas e semanal e o **Meu dia** (só tokens: o Codex não informa custo). O
 chip da conta do Codex é vazado e leva o selo **CODEX**.
 
+**Hermes Agent** (NousResearch): com `HABBLAUD_HERMES_DIR` apontando para o diretório de dados do Hermes, cada perfil vira uma sala com um agente permanente e as rotinas do cron aparecem ao vivo, só leitura (veja [`server/sources/hermes/README.md`](server/sources/hermes/README.md)).
+
 - **Sem instalar nada**, o Habblaud lê os arquivos que o próprio Codex grava (as conversas em `~/.codex/sessions` e as
   travas das sessões abertas em `~/.codex/thread-writer-locks`). Só que o Codex grava cada passo **depois** que ele
   termina e nunca grava "esperando você": sem os hooks, o escritório mostra o Codex com atraso e não avisa quando ele
