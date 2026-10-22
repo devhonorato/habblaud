@@ -33,7 +33,7 @@ import { Elevator } from './elevator';
 import { RoomFxState } from './github';
 import { RoomState } from './room-state';
 import { countShells, latestShellDone, shellLabel, shellStage, shellWaitSince, spinDir, spinPhase, yawnPhase } from './shell';
-import { SpotRegistry } from './spots';
+import { restroomFor, SpotRegistry } from './spots';
 import type { Step } from './steps';
 import { EXIT_RADIUS, NO_INTENT, stepFree, tileAt, VISITOR_LANYARD, type VisitorIntent } from './visitor';
 import { tr } from '../../../../shared/i18n';
@@ -1486,7 +1486,7 @@ export class Sim {
     const avail: Partial<Record<IdleActivity, boolean>> = {
       coffee: !!this.spots.findFree('coffee', { by: ch.id }),
       water: !!this.spots.findFree('water', { by: ch.id }),
-      bathroom: !!this.spots.findFree('stall', { by: ch.id }),
+      bathroom: !!this.spots.findFree('stall', { by: ch.id, filter: restroomFor(ch.info.look) }),
       lounge: LOUNGE_SEATS.some((k) => !!this.spots.findFree(k, { by: ch.id })),
       // jogos e conversas são rodas (social/): aqui só o que se faz sozinho
       pingpong: false,
@@ -1542,12 +1542,13 @@ export class Sim {
         break;
       }
       case 'bathroom': {
-        const s = this.spots.findFree('stall', { by: ch.id, rng })!;
+        // o banheiro do visual do personagem (masculino ou feminino) e as pias dele
+        const s = this.spots.findFree('stall', { by: ch.id, rng, filter: restroomFor(ch.info.look) })!;
         if (!this.reserveTemp(ch, s)) return false;
         this.pushLeave(ch, steps);
         steps.push({ t: 'go', tx: s.tx, ty: s.ty }, { t: 'stall', spot: s.id, ms: between(rng, 5000, 12000), phase: 0 });
         release(s);
-        const sink = this.spots.findFree('sink', { near: { tx: s.tx, ty: s.ty }, by: ch.id });
+        const sink = this.spots.findFree('sink', { near: { tx: s.tx, ty: s.ty }, by: ch.id, filter: (p) => p.areaId === s.areaId && p.restroom === s.restroom });
         if (sink && this.reserveTemp(ch, sink)) {
           goUse(sink);
           steps.push({ t: 'act', pose: 'use', ms: 2200 });

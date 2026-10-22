@@ -85,6 +85,8 @@ function build(kind: FurnitureKind, variant: string | undefined, state: number, 
       return W.doorFrame();
     case 'sign':
       return W.sign();
+    case 'restroom_sign':
+      return W.restroomSign(variant);
     case 'mirror':
       return W.mirror();
     case 'shelf_wall':

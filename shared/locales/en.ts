@@ -3458,4 +3458,16 @@ export const EN: Readonly<Record<string, string>> = {
   "{0} · mudou: chamou {1}{2}": "{0} · changed: called {1}{2}",
   "**Última leitura do monitor** ({0})": "**Latest monitor reading** ({0})",
   "Vigia da rotina {0}{1}: roda o monitor sem gastar o modelo e só chama {2} quando a leitura muda": "Watcher of routine {0}{1}: runs the monitor without spending the model and only calls {2} when the reading changes",
+
+  // HABBLAUD_HERMES_SALAS / HABBLAUD_HERMES_NOMES, banheiros e leituras do Vigia
+  "sala {0} (perfil {1})": "room {0} (profile {1})",
+  "♂ Masculino": "♂ Men",
+  "♀ Feminino": "♀ Women",
+  "{0}: ignorando {1}": "{0}: ignoring {1}",
+  "Leituras do Vigia desligadas: {0} fica dentro do diretório do Hermes, que é só leitura.": "Watcher readings off: {0} is inside the Hermes directory, which is read-only.",
+  "Leituras do Vigia: {0} passou de 32 MB; o resto do dia não é guardado.": "Watcher readings: {0} went over 32 MB; the rest of the day is not kept.",
+  "Não foi possível guardar a leitura do Vigia em {0} ({1}).": "Couldn't save the Watcher reading in {0} ({1}).",
+  "Diferença para a leitura anterior:": "Difference from the previous reading:",
+  "Leitura completa ({0}, igual à anterior):": "Full reading ({0}, same as the previous one):",
+  "Leitura completa ({0}):": "Full reading ({0}):",
 };

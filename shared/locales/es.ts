@@ -3459,4 +3459,16 @@ export const ES: Readonly<Record<string, string>> = {
   "{0} · mudou: chamou {1}{2}": "{0} · cambió: llamó a {1}{2}",
   "**Última leitura do monitor** ({0})": "**Última lectura del monitor** ({0})",
   "Vigia da rotina {0}{1}: roda o monitor sem gastar o modelo e só chama {2} quando a leitura muda": "Vigía de la rutina {0}{1}: ejecuta el monitor sin gastar el modelo y solo llama a {2} cuando la lectura cambia",
+
+  // HABBLAUD_HERMES_SALAS / HABBLAUD_HERMES_NOMES, banheiros e leituras do Vigia
+  "sala {0} (perfil {1})": "sala {0} (perfil {1})",
+  "♂ Masculino": "♂ Hombres",
+  "♀ Feminino": "♀ Mujeres",
+  "{0}: ignorando {1}": "{0}: ignorando {1}",
+  "Leituras do Vigia desligadas: {0} fica dentro do diretório do Hermes, que é só leitura.": "Lecturas del Vigía desactivadas: {0} está dentro del directorio de Hermes, que es de solo lectura.",
+  "Leituras do Vigia: {0} passou de 32 MB; o resto do dia não é guardado.": "Lecturas del Vigía: {0} superó los 32 MB; el resto del día no se guarda.",
+  "Não foi possível guardar a leitura do Vigia em {0} ({1}).": "No se pudo guardar la lectura del Vigía en {0} ({1}).",
+  "Diferença para a leitura anterior:": "Diferencia con la lectura anterior:",
+  "Leitura completa ({0}, igual à anterior):": "Lectura completa ({0}, igual a la anterior):",
+  "Leitura completa ({0}):": "Lectura completa ({0}):",
 };

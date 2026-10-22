@@ -108,8 +108,9 @@ export interface MainInput {
   status: AgentStatus;
   waitingFor?: string;
   /**
-   * Nome fixo do personagem (ex.: o "Vigia" de uma rotina do Hermes), no lugar do sorteado. Se outro agente já usa o
-   * nome, vale "<nome> (<sala>)".
+   * Nome fixo do personagem (ex.: o "Vigia" de uma rotina do Hermes ou um nome de HABBLAUD_HERMES_NOMES), no lugar do
+   * sorteado. O personagem do editor (names.json) continua valendo por cima quando a dona dele é esta sessão; se outro
+   * agente já usa o nome, vale "<nome> (<sala>)". "Voltar ao sorteio" volta a este nome.
    */
   name?: string;
   look?: 'f' | 'm';
@@ -137,6 +138,8 @@ interface AgentRecord {
   synthWait?: { id: string; prev?: Activity };
   /** Balão "Esperando o shell" sintetizado neste episódio do status 'shell' (e a atividade que ele cobriu). */
   shellWait?: { id: string; prev?: Activity };
+  /** Nome fixo pedido pela fonte (MainInput.name): o "sorteio" deste agente. */
+  fixed?: { name: string; look: 'f' | 'm' };
 }
 
 /** O que terminou (para a atividade 'ShellDone' e o aviso). */
@@ -330,11 +333,14 @@ export class Office {
     }
     const roomId = normalizeCwd(p.cwd);
     this.ensureRoom(roomId, now);
-    const chosen = p.name ? undefined : this.roomCharacter(roomId, p.id, p.sessionId);
+    // Precedência: o personagem do editor (da sala; com nome fixo, só se a dona for esta sessão) > o nome fixo > o
+    // sorteado (names.json por sessão).
+    const fixedBase = p.name ? { name: p.name, look: p.look ?? 'm' } : undefined;
+    const chosen = this.roomCharacter(roomId, p.id, p.sessionId, !!fixedBase);
     // A mesma sessão retomada noutro processo (ex.: "Assumir aqui") mantém o nome, mesmo com o processo antigo
     // ainda saindo do escritório.
-    const fixed = p.name ? { name: this.takenNames(p.id).has(p.name) ? `${p.name} (${this.roomName(roomId)})` : p.name, look: p.look ?? 'm' } : undefined;
-    const person = fixed ?? chosen ?? this.deps.names.assign(p.sessionId, this.takenNames(undefined, p.sessionId));
+    const fixed = !chosen && fixedBase ? this.fixedPerson(fixedBase, p.id, roomId) : undefined;
+    const person = chosen ?? fixed ?? this.deps.names.assign(p.sessionId, this.takenNames(undefined, p.sessionId));
     const info: AgentInfo = {
       id: p.id,
       kind: 'main',
@@ -360,6 +366,7 @@ export class Office {
     }
     if (p.status === 'waiting') info.waitingFor = p.waitingFor ?? tr('responder no terminal');
     const rec: AgentRecord = { info, history: [] };
+    if (fixedBase) rec.fixed = fixedBase;
     if (p.status === 'working') rec.turnStart = now;
     this.agents.set(p.id, rec);
     const acc = this.deps.accountName(p.account);
@@ -871,7 +878,7 @@ export class Office {
     const owner = this.deps.names.character(info.roomId)?.owner;
     if (owner === undefined || owner === info.sessionId) this.deps.names.clearCharacter(info.roomId);
     if (info.custom) {
-      const person = this.deps.names.assign(info.sessionId, this.takenNames(id));
+      const person = rec.fixed ? this.fixedPerson(rec.fixed, id, info.roomId) : this.deps.names.assign(info.sessionId, this.takenNames(id));
       info.name = person.name;
       info.look = person.look;
       info.seed = hash32(id);
@@ -894,13 +901,20 @@ export class Office {
    * tem nome guardado mantém o dela: depois de um reinício, a ordem de chegada não troca identidades nem muda o
    * personagem de uma sessão no meio dela.
    */
-  private roomCharacter(roomId: string, id: string, sessionId: string): StoredCharacter | undefined {
+  private roomCharacter(roomId: string, id: string, sessionId: string, ownedOnly = false): StoredCharacter | undefined {
     const c = this.deps.names.character(roomId);
     if (!c) return undefined;
+    // Agente com nome fixo (MainInput.name): só o personagem que ele mesmo salvou; o de outro agente da sala não.
+    if (ownedOnly && c.owner !== sessionId) return undefined;
     if (c.owner !== undefined && c.owner !== sessionId && this.deps.names.get(sessionId)) return undefined;
     if (this.nameConflict(c.name, id, roomId)) return undefined;
     this.deps.names.claimCharacter(roomId, sessionId);
     return c;
+  }
+
+  /** Nome fixo de `id`; se outro agente (ou o personagem de outra sala) já usa o nome, "<nome> (<sala>)". */
+  private fixedPerson(f: { name: string; look: 'f' | 'm' }, id: string, roomId: string): { name: string; look: 'f' | 'm' } {
+    return { name: this.takenNames(id).has(f.name) ? `${f.name} (${this.roomName(roomId)})` : f.name, look: f.look };
   }
 
   /**

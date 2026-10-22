@@ -13,7 +13,7 @@ import type { Notice } from '../../../shared/types';
 import type { PropHit } from '../world/api';
 import type { UiComponent, UiContext } from './context';
 import { h, iconButton, setAttr, setHidden, setStyleVar, setText, setTitle } from './dom';
-import { callsByModel, fetchHermesPanel, formatBytes, formatTokens, formatUptime, levelOf, modelLabel, profileOfAgent, quotaSummary, relTime, systemLabel, systemLevel, teamTotals, type Level } from './hermes-model';
+import { callsByModel, fetchHermesPanel, formatBytes, formatTokens, formatUptime, levelOf, modelLabel, profileOfAgent, quotaSummary, relTime, roomOf, roomOfProfile, systemLabel, systemLevel, teamTotals, type Level } from './hermes-model';
 import { ICONS } from './icons';
 import { renderMarkdown } from './markdown';
 import { createAccountChip, updateAccountChip } from './widgets';
@@ -311,7 +311,7 @@ export class HermesDialog implements UiComponent {
     if (d.profiles.length < 2) return null;
     const sel = h('select', { class: 'ui-day__select', attrs: { 'aria-label': tr('Perfil') }, on: { change: () => ((this.profile = sel.value), this.render(true)) } });
     sel.append(h('option', { text: tr('Todos os perfis'), attrs: { value: '' } }));
-    for (const p of d.profiles) sel.append(h('option', { text: p.name, attrs: { value: p.name } }));
+    for (const p of d.profiles) sel.append(h('option', { text: roomOf(p), attrs: { value: p.name } }));
     sel.value = this.profile;
     return sel;
   }
@@ -388,7 +388,7 @@ export class HermesDialog implements UiComponent {
           h(
             'tr',
             {},
-            h('td', { text: u.profile }),
+            h('td', { text: roomOfProfile(d, u.profile) }),
             h('td', { text: modelLabel(u.model), title: u.model }),
             h('td', { text: u.provider }),
             h('td', { text: u.task || tr('conversa') }),
@@ -403,7 +403,7 @@ export class HermesDialog implements UiComponent {
     if (!q.limits.length) wrap.append(h('p', { class: 'ui-hp__empty', text: q.logFound ? tr('Nenhum limite hoje.') : tr('Nenhum limite visto (sem logs/agent.log; só os erros das rotinas).') }));
     else {
       const ul = h('ul', { class: 'ui-hp__list' });
-      for (const l of q.limits.slice(0, 20)) ul.append(h('li', {}, h('span', { class: 'ui-hp__when', text: fmtTime(l.at) }), ' ', h('b', { text: [l.profile, l.model, l.provider].filter(Boolean).join(' · ') }), h('div', { class: 'ui-hp__mono', text: l.text })));
+      for (const l of q.limits.slice(0, 20)) ul.append(h('li', {}, h('span', { class: 'ui-hp__when', text: fmtTime(l.at) }), ' ', h('b', { text: [l.profile ? roomOfProfile(d, l.profile) : '', l.model, l.provider].filter(Boolean).join(' · ') }), h('div', { class: 'ui-hp__mono', text: l.text })));
       wrap.append(ul);
     }
     return wrap;
@@ -423,7 +423,7 @@ export class HermesDialog implements UiComponent {
           {},
           agent ? badge(agent.status === 'working' ? tr('trabalhando') : agent.status === 'offline' ? tr('desligado') : agent.status === 'waiting' ? tr('esperando você') : tr('ocioso'), agent.status === 'working' ? 'ok' : agent.status === 'offline' ? 'crit' : 'info') : null,
           ' ',
-          `${agent?.name ?? p.name} · ${tr('perfil {0}', [p.name])}`,
+          `${agent?.name ?? roomOf(p)} · ${roomOf(p) === p.name ? tr('perfil {0}', [p.name]) : tr('sala {0} (perfil {1})', [roomOf(p), p.name])}`,
         ),
         p.description ? h('p', { class: 'ui-hp__note', text: p.description }) : null,
         h('p', { class: 'ui-hp__note', text: tr('{0} tokens hoje · {1} rodadas', [formatTokens(p.tokensToday), p.runsToday]) }),
@@ -470,7 +470,7 @@ export class HermesDialog implements UiComponent {
         h(
           'article',
           { class: 'ui-hp__talk' },
-          h('div', { class: 'ui-hp__talk-head' }, h('span', { class: 'ui-hp__when', text: fmtTime(o.at) }), ' ', h('b', { text: `${this.ctx.agent(p.agentId)?.name ?? p.name} · ${o.jobName}` }), ' ', this.agentButton(p.agentId, tr('Abrir no terminal'), true)),
+          h('div', { class: 'ui-hp__talk-head' }, h('span', { class: 'ui-hp__when', text: fmtTime(o.at) }), ' ', h('b', { text: `${this.ctx.agent(p.agentId)?.name ?? roomOf(p)} · ${o.jobName}` }), ' ', this.agentButton(p.agentId, tr('Abrir no terminal'), true)),
           body,
         ),
       );
@@ -483,7 +483,7 @@ export class HermesDialog implements UiComponent {
     const card = h(
       'section',
       { class: 'ui-hp__card' },
-      h('h3', {}, tr('{0} · {1}', [owner.name, m.jobName]), ' ', h('span', { class: 'ui-hp__when', text: tr('leitura {0}', [relTime(m.at, now)]) }), ' ', this.agentButton(m.agentId, tr('Ver o Vigia'))),
+      h('h3', {}, tr('{0} · {1}', [roomOf(owner), m.jobName]), ' ', h('span', { class: 'ui-hp__when', text: tr('leitura {0}', [relTime(m.at, now)]) }), ' ', this.agentButton(m.agentId, tr('Ver o Vigia'))),
     );
     if (k && !k.online) card.append(h('p', {}, badge(tr('Kairo fora do ar'), 'crit'), ' ', tr('o agente espera ele voltar.')));
     if (k?.online) {

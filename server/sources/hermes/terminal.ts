@@ -17,6 +17,7 @@ import { marked, oneLine, prepare, RESULT_MAX, RESULT_MAX_LINES, TEXT_MAX, THINK
 import { describeMonitorLine, outputTimeOf, parseCronOutput, stripCronPreamble, wakeReason } from './cron';
 import { isCronPrompt, parseToolCalls, splitToolName, toolResultError, unwrapToolResult } from './describe';
 import { jobIdOfSession, type CronJob } from './profiles';
+import { readingDiff, type StoredReading } from './readings';
 import type { ReadOnlyDb, SqliteDatabase } from './sqlite';
 
 /** Mensagens lidas para o init do terminal do principal (as mais recentes). */
@@ -515,49 +516,105 @@ export function readMonitorLines(path: string, max = 60): { lines: string[]; at:
   }
 }
 
+/** Uma checagem casa com a leitura guardada mais próxima até esta distância (a saída e o monitor saem juntos). */
+const READING_MATCH_MS = 120_000;
+/** Checagem nova ainda sem leitura guardada: espera até isto por ela antes de sair sem. */
+const READING_WAIT_MS = 20_000;
+
+/** Leituras guardadas de uma rotina (readings.ts), entre duas horas. */
+export type ReadingsOf = (from: number, to: number) => StoredReading[];
+
+/** Linhas de uma diferença do monitor com o que cada uma quer dizer ("→ venda", "→ posição aberta"...). */
+function explainDiff(lines: readonly string[]): string[] {
+  return lines.map((l) => `${l}${l.length > 1 && (l[0] === '+' || l[0] === '-') ? `   → ${describeMonitorLine(l.slice(1))}` : ''}`);
+}
+
 /**
  * Terminal do Vigia de uma rotina com monitor: cada checagem (as saídas do cron: "sem mudança" ou "mudou: chamou o
- * principal", com a diferença) e, por último, a leitura completa do monitor (de novo a cada leitura nova).
+ * principal", com a diferença) e, por último, a leitura completa do monitor (de novo a cada leitura nova). Com o
+ * histórico das leituras (readings.ts), cada checagem abre a leitura completa daquela hora e a diferença para a
+ * anterior.
  */
 export class VigiaFeed implements TerminalFeed {
   readonly intervalMs = 2_000;
   private seen = new Set<string>();
   private dirSig = '';
   private readSig = '';
+  /** Checagens novas esperando a leitura guardada (nome do arquivo -> quando apareceu). */
+  private waiting = new Map<string, number>();
 
   constructor(
     private readonly dir: string,
     private readonly job: CronJob,
     /** Nome do agente principal (quem o Vigia chama). */
     private readonly mainName: () => string,
-    private readonly opts: { outputs?: number } = {},
+    private readonly opts: { outputs?: number; readings?: ReadingsOf; now?: () => number } = {},
   ) {}
 
   private get outDir(): string {
     return join(this.dir, 'cron', 'output', this.job.id);
   }
 
-  private checks(): TerminalEntry[] {
+  /** A leitura guardada mais perto de `at` (e a anterior a ela com outro conteúdo, para a diferença). */
+  private readingAt(list: readonly StoredReading[], at: number): { cur: StoredReading; prev?: StoredReading } | undefined {
+    let best = -1;
+    for (let i = 0; i < list.length; i++) {
+      const d = Math.abs(list[i].at - at);
+      if (d <= READING_MATCH_MS && (best < 0 || d < Math.abs(list[best].at - at))) best = i;
+    }
+    if (best < 0) return undefined;
+    const cur = list[best];
+    for (let i = best - 1; i >= 0; i--) if (list[i].sig !== cur.sig) return { cur, prev: list[i] };
+    return { cur };
+  }
+
+  /** Detalhe de uma checagem: a diferença (a do Hermes ou a calculada) e a leitura completa daquela hora. */
+  private checkDetail(diff: string[], r: { cur: StoredReading; prev?: StoredReading } | undefined): string | undefined {
+    const parts: string[] = [];
+    let lines = diff;
+    if (!lines.length && r?.prev && !r.cur.same) lines = explainDiff(readingDiff(r.prev.lines, r.cur.lines));
+    if (lines.length) parts.push(tr('Diferença para a leitura anterior:'), ...lines);
+    if (r) {
+      if (parts.length) parts.push('');
+      parts.push(r.cur.same ? tr('Leitura completa ({0}, igual à anterior):', [hhmm(r.cur.at)]) : tr('Leitura completa ({0}):', [hhmm(r.cur.at)]));
+      parts.push(...(r.cur.lines.length ? r.cur.lines : [tr('(leitura vazia)')]));
+    }
+    return parts.length ? maskSecrets(parts.join('\n')) : undefined;
+  }
+
+  private checks(live: boolean): TerminalEntry[] {
     const out: TerminalEntry[] = [];
     this.dirSig = dirSig(this.outDir);
-    for (const f of listOutputs(this.outDir, this.opts.outputs ?? 200)) {
-      if (this.seen.has(f.name)) continue;
+    const files = listOutputs(this.outDir, this.opts.outputs ?? 200).filter((f) => !this.seen.has(f.name));
+    const readings = files.length && this.opts.readings ? this.opts.readings(files[0].at - READING_MATCH_MS, files[files.length - 1].at + READING_MATCH_MS) : [];
+    const now = this.opts.now?.() ?? Date.now();
+    for (const f of files) {
+      const r = this.readingAt(readings, f.at);
+      // Ao vivo, a saída pode aparecer antes de a leitura ser guardada: espera um pouco por ela.
+      if (live && !r && this.opts.readings) {
+        const since = this.waiting.get(f.name) ?? now;
+        this.waiting.set(f.name, since);
+        // Em ordem: as seguintes esperam junto.
+        if (now - since < READING_WAIT_MS) break;
+      }
+      this.waiting.delete(f.name);
       this.seen.add(f.name);
       const text = readSmall(f.path, 64 * 1024);
       if (!text) continue;
       const o = parseCronOutput(text);
       if (o.noChange) {
-        out.push({ kind: 'system', id: `v${f.name}`, at: f.at, text: tr('{0} · checagem: sem mudança (o modelo não rodou)', [hhmm(f.at)]), level: 'info' });
+        const detail = this.checkDetail([], r);
+        out.push({ kind: 'system', id: `v${f.name}`, at: f.at, text: tr('{0} · checagem: sem mudança (o modelo não rodou)', [hhmm(f.at)]), ...(detail ? { detail } : {}), level: 'info' });
         continue;
       }
       const reason = wakeReason(o.diff, 120);
-      const lines = o.diff ? o.diff.split('\n').map((l) => `${l}${l.length > 1 && (l[0] === '+' || l[0] === '-') ? `   → ${describeMonitorLine(l.slice(1))}` : ''}`) : [];
+      const detail = this.checkDetail(o.diff ? explainDiff(o.diff.split('\n')) : [], r);
       out.push({
         kind: 'system',
         id: `v${f.name}`,
         at: f.at,
         text: maskSecrets(tr('{0} · mudou: chamou {1}{2}', [hhmm(f.at), this.mainName(), reason ? ` (${reason})` : ''])),
-        detail: lines.length ? lines.join('\n') : undefined,
+        ...(detail ? { detail } : {}),
         level: 'warn',
       });
     }
@@ -577,6 +634,7 @@ export class VigiaFeed implements TerminalFeed {
 
   load(limit: number): TerminalFeedInit {
     this.seen.clear();
+    this.waiting.clear();
     this.readSig = '';
     const intro: TerminalEntry = {
       kind: 'system',
@@ -585,7 +643,7 @@ export class VigiaFeed implements TerminalFeed {
       text: tr('Vigia da rotina {0}{1}: roda o monitor sem gastar o modelo e só chama {2} quando a leitura muda', [this.job.name, this.job.schedule ? ` (${this.job.schedule})` : '', this.mainName()]),
       level: 'info',
     };
-    let entries = [...this.checks(), ...this.reading()];
+    let entries = [...this.checks(false), ...this.reading()];
     const truncated = entries.length > limit;
     if (truncated) entries = entries.slice(-limit);
     if (entries.length) intro.at = entries[0].at;
@@ -594,7 +652,7 @@ export class VigiaFeed implements TerminalFeed {
 
   poll(): TerminalEntry[] {
     const out: TerminalEntry[] = [];
-    if (dirSig(this.outDir) !== this.dirSig) out.push(...this.checks());
+    if (dirSig(this.outDir) !== this.dirSig || this.waiting.size) out.push(...this.checks(true));
     out.push(...this.reading());
     return out;
   }

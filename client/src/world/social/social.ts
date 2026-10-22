@@ -13,6 +13,7 @@ import type { SpotDef } from '../layout/types';
 import { FREE } from '../path/grid';
 import { facing, type Character } from '../sim/character';
 import type { Sim } from '../sim/sim';
+import { restroomFor } from '../sim/spots';
 import type { Step } from '../sim/steps';
 import {
   active,
@@ -188,6 +189,8 @@ export class Social {
     else if (kind === 'kitchen') want = 1 + Math.floor(rng() * 2.4);
     else if (kind === 'mirror') want = groupOnly ? 1 : cands.some((c) => hasTrait(personaFor(c.info.seed), 'vaidade')) && rng() < 0.5 ? 1 : 0;
     else want = info.min - 1;
+    // espelho: só quem usa o mesmo banheiro vai junto
+    if (kind === 'mirror') cands = cands.filter((c) => c.info.look === host.info.look);
     // torcida já na largada, às vezes
     if (wantOverride === undefined && (kind === 'pingpong' || kind === 'videogame' || kind === 'rps') && rng() < 0.3) want++;
     want = Math.max(0, Math.min(want, cands.length, info.max - 1));
@@ -468,7 +471,8 @@ export class Social {
       case 'kitchen':
         return this.kitchenSeats(n, free, ch.rng);
       case 'mirror': {
-        const sinks = spots.ofKind('sink').filter((s) => s.areaId === RESTROOM_ID && free(s)).sort((a, b) => a.tx - b.tx);
+        // espelho do banheiro do visual de quem chamou (masculino ou feminino)
+        const sinks = spots.ofKind('sink').filter((s) => s.areaId === RESTROOM_ID && free(s) && restroomFor(ch.info.look)(s)).sort((a, b) => a.tx - b.tx);
         if (n === 1) return sinks.length ? { seats: [sinks[Math.floor(ch.rng() * sinks.length)]], pool: [] } : null;
         for (let i = 0; i + 1 < sinks.length; i++) if (sinks[i + 1].tx === sinks[i].tx + 1) return { seats: [sinks[i], sinks[i + 1]], pool: [] };
         return null;

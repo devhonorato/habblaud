@@ -242,6 +242,28 @@ describe('simulação do escritório', () => {
     expect(ana.pose).toBe('type');
   });
 
+  it('banheiro: cada um usa a cabine e as pias do banheiro do seu visual (masculino ou feminino)', () => {
+    for (const look of ['f', 'm'] as const) {
+      const sim = newSim();
+      const clock = { now: T0 };
+      sim.applySnapshot(snap([room('/a', 0)], [agent('ana', '/a', 'idle', { look, seed: look === 'f' ? 4242 : 777 })]), clock.now);
+      const ana = sim.chars.get('ana')!;
+      const seen = new Set<string>();
+      for (let round = 0; round < 80 && !seen.has('stall'); round++) {
+        ana.nextOutingAt = 1;
+        run(sim, clock, 20, () => {
+          const spot = ana.step?.t === 'stall' ? sim.spots.get(ana.step.spot) : sim.spots.get(ana.atSpot);
+          if (spot?.restroom) {
+            expect(spot.restroom, spot.id).toBe(look);
+            seen.add(spot.kind);
+          }
+          return false;
+        });
+      }
+      expect(seen.has('stall'), look).toBe(true);
+    }
+  });
+
   it('quem cochila na mesa (ocioso há muito tempo) acorda ao levantar: o "zzz" não vai junto', () => {
     const sim = newSim();
     const clock = { now: T0 };

@@ -8,6 +8,7 @@ import { TILE } from '../../art/api';
 import type { WorldOptions } from '../api';
 import type { Camera } from '../camera';
 import { COL_W, CORRIDOR_Y, SOUTH_Y } from '../constants';
+import { RESTROOM_ID, RESTROOMS } from '../layout/core';
 import type { Character } from '../sim/character';
 import { shellAgeKey, shellBubbleAlpha, shellBubbleText, STORM_LIFT, unitHash } from '../sim/shell';
 import type { Sim } from '../sim/sim';
@@ -48,10 +49,12 @@ const OVERVIEW_TOTAL = 4;
 
 const CORE_NAMES: Record<string, string> = {
   'core:recepcao': tr('Recepção'),
-  'core:banheiros': tr('Banheiros'),
   'core:copa': tr('Copa'),
   'core:lounge': tr('Lounge'),
 };
+
+/** Nome de cada banheiro (o símbolo vem primeiro: sozinho, ele é o nome curto). */
+const RESTROOM_NAMES: Record<'f' | 'm', string> = { m: tr('♂ Masculino'), f: tr('♀ Feminino') };
 
 /** 'shell' = espera de shell: balão escuro de terminal com texto verde. 'say' = fala das rodas (papo, torcida, apostas). */
 type Tone = 'info' | 'alert' | 'deliver' | 'shell' | 'say';
@@ -446,6 +449,14 @@ export class Overlay {
         // endereço antigo de uma mudança: o nome já está na sala nova
         if (!room.present || room.ghost || (anim && anim.walls < 0.6)) continue;
         this.drawRoomPill(room.info.name, cx, cy, colW - 8, room.accounts, this.countIn(room.id), room.theme.accent, room.lightOn);
+      } else if (vis.id === RESTROOM_ID) {
+        // um nome por banheiro, sobre cada metade (só o símbolo quando não cabe)
+        for (const b of RESTROOMS) {
+          const half = this.sx((r.x + (b.x0 + b.x1 + 1) / 2) * TILE);
+          const label = RESTROOM_NAMES[b.look];
+          const maxW = colW / 2 - 6;
+          this.drawCorePill(this.measure(CORE_FONT_SMALL, label) <= maxW - 14 ? label : label.slice(0, 1), half, cy, maxW, 1);
+        }
       } else if (CORE_NAMES[vis.id]) {
         this.drawCorePill(CORE_NAMES[vis.id], cx, cy, colW - 8);
       }
@@ -579,12 +590,12 @@ export class Overlay {
     this.place(x, y, w, h);
   }
 
-  private drawCorePill(name: string, cx: number, cy: number, maxW: number): void {
+  private drawCorePill(name: string, cx: number, cy: number, maxW: number, minChars = 3): void {
     const { ctx } = this;
     // fonte um pouco menor antes de cortar o nome
     const font = this.measure(CORE_FONT, name) <= maxW - 14 ? CORE_FONT : CORE_FONT_SMALL;
     const text = this.fit(font, name, maxW - 14);
-    if (text.length < 3) return;
+    if (text.length < minChars) return;
     const tw = this.measure(font, text);
     const w = Math.round(tw + 14);
     const h = 18;

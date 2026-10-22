@@ -1,6 +1,14 @@
 // Registro de spots com reservas (1 ocupante por spot) e busca de alternativas livres.
 import type { SpotDef, SpotKind } from '../layout/types';
 
+/**
+ * Filtro do banheiro: cabines e pias de um banheiro só servem a quem tem o `look` dele ('m' = masculino, 'f' =
+ * feminino); os demais spots servem a todos.
+ */
+export function restroomFor(look: 'f' | 'm' | undefined): (s: SpotDef) => boolean {
+  return (s) => !s.restroom || s.restroom === look;
+}
+
 export class SpotRegistry {
   private spots = new Map<string, SpotDef>();
   private owners = new Map<string, string>();

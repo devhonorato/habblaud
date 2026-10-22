@@ -127,6 +127,17 @@ export function profileOfAgent(p: HermesPanel | null, agentId: string): HermesPr
   return p?.profiles.find((x) => x.agentId === agentId || x.jobs.some((j) => j.vigiaId === agentId));
 }
 
+/** Nome da sala do perfil no escritório (HABBLAUD_HERMES_SALAS ou o "Renomear"), ou o do perfil. */
+export function roomOf(p: Pick<HermesProfilePanel, 'name' | 'room'>): string {
+  return p.room || p.name;
+}
+
+/** A sala de um perfil pelo nome dele (nas cotas, que vêm por perfil). */
+export function roomOfProfile(d: HermesPanel, profile: string): string {
+  const p = d.profiles.find((x) => x.name === profile);
+  return p ? roomOf(p) : profile;
+}
+
 /** "em 4 min", "agora", "há 2 h" (relativo a `now`). */
 export function relTime(at: number | undefined, now: number): string {
   if (!at) return '—';

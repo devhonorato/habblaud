@@ -517,6 +517,38 @@ describe('Office: personagem do projeto', () => {
     expect(office.commit().notices.map((n) => n.text)).toContain('✏️ Zé Backend mudou de visual em api');
   });
 
+  it('nome fixo (MainInput.name): vale no lugar do sorteio; o personagem do editor vale por cima e sobrevive a um reinício', () => {
+    const names = new NameStore(null);
+    // o sorteio de antes (guardado em names.json) não vence o nome fixo
+    names.remember('hermes-crypto', { name: 'Henrique', look: 'm' });
+    const fixed = (id: string, sessionId: string, name: string, now: number) => ({ ...main(id, sessionId, '/h/profiles/crypto', now), name, look: 'f' as const });
+    let o = makeOffice(names);
+    o.office.addMain(fixed('h:crypto', 'hermes-crypto', 'Hermes', o.now()));
+    o.office.addMain(fixed('h:vigia', 'hermes-crypto-vigia', 'Sentinela', o.now()));
+    expect(o.office.get('h:crypto')).toMatchObject({ name: 'Hermes', look: 'f', seed: hash32('h:crypto') });
+    expect(o.office.get('h:crypto')!.custom).toBeUndefined();
+    expect(o.office.get('h:vigia')!.name).toBe('Sentinela');
+    // o usuário renomeia o Vigia no editor: depois de um reinício ele continua renomeado, e o principal não pega o personagem
+    expect(o.office.setCharacter('h:vigia', { name: 'Olho', seed: 9, parts: {} })).toEqual({ result: 'ok' });
+    o = makeOffice(names);
+    o.office.addMain(fixed('h:crypto', 'hermes-crypto', 'Hermes', o.now()));
+    o.office.addMain(fixed('h:vigia', 'hermes-crypto-vigia', 'Sentinela', o.now()));
+    expect(o.office.get('h:crypto')!.name).toBe('Hermes');
+    expect(o.office.get('h:vigia')).toMatchObject({ name: 'Olho', seed: 9, custom: true });
+    // "Voltar ao sorteio" volta ao nome fixo, não a um nome do pool
+    expect(o.office.resetCharacter('h:vigia')).toBe('ok');
+    expect(o.office.get('h:vigia')).toMatchObject({ name: 'Sentinela', look: 'f', seed: hash32('h:vigia') });
+    expect(names.character('/h/profiles/crypto')).toBeUndefined();
+  });
+
+  it('nome fixo já em uso no escritório: ganha a sala entre parênteses (os nomes são únicos)', () => {
+    const { office, now } = makeOffice();
+    office.addMain({ ...main('acc:1', 's1', '/p/api', now()), name: 'Hermes' });
+    office.addMain({ ...main('acc:2', 's2', '/p/web', now()), name: 'hermes' });
+    expect(office.get('acc:1')!.name).toBe('Hermes');
+    expect(office.get('acc:2')!.name).toBe('hermes (web)');
+  });
+
   it('reabrir a sessão logo depois de fechar (o antigo ainda saindo): o personagem volta', () => {
     const { office, advance, now } = makeOffice();
     office.addMain(main('acc:1', 's1', '/p/api', now()));

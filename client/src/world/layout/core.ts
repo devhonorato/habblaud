@@ -71,47 +71,57 @@ export function layoutReception(): AreaLayout {
   return a;
 }
 
+/** Os dois banheiros: masculino a oeste, feminino a leste (tiles locais da área de banheiros). */
+export const RESTROOMS = [
+  { look: 'm', x0: 1, x1: 6, door: 3 },
+  { look: 'f', x0: 9, x1: 14, door: 11 },
+] as const;
+
+/**
+ * Banheiros masculino (oeste) e feminino (leste), lado a lado na mesma área, com uma parede no meio e uma porta para o
+ * corredor cada. Cada um tem duas pias com espelho, uma cabine e a placa (♂/♀) ao lado da porta; as cabines ficam
+ * de costas uma para a outra, encostadas na parede do meio. As cabines e as pias levam o `look` do banheiro: só quem
+ * tem esse visual usa (sim.ts e social.ts).
+ */
 export function layoutRestroom(): AreaLayout {
   const b = new AreaBuilder(RESTROOM_ID, 'restroom', { x: 0, y: SOUTH_Y, w: COL_W, h: ROOM_H });
   const wall = CORE_WALLS.restroom;
   b.floor('tile_white', 0, 0, 16, 12, 201);
-  // tapetinho só na frente das pias (nada de tapete grande no meio do banheiro)
-  b.rug(2, 3.15, 3, 0.85, '#6fa3b8', 202);
-  b.face(0.5, 15, wall, [{ lx: 7, w: 2 }]);
-  b.wall('door_frame', 8, undefined, { order: 0.05 });
+  b.face(0.5, 15, wall, RESTROOMS.map((r) => ({ lx: r.door, w: 2 })));
   b.south(0.5, 15, 11, { ...wall, exterior: true });
   b.cap(0, 0, 0.5, 12, wall);
   b.cap(15.5, 0, 0.5, 12, wall);
-  b.walk(1, 2, 14, 9);
-  b.walk(7, 0, 2, 2);
-  b.area.door = { x: 7, y: SOUTH_Y, w: 2, h: 2 };
+  // parede do meio (como as laterais: as duas colunas dela não são piso de ninguém)
+  b.cap(7.75, 0, 0.5, 12, wall);
+  b.block(7, 2, 2, 9);
 
-  // pias com espelho
-  for (let i = 0; i < 3; i++) {
-    b.wall('mirror', 2.5 + i, undefined, { order: 0.3 });
-    b.furn('sink', 2 + i, 2, undefined, { order: 0.35 });
-    b.spot('sink', 2 + i, 3, 'up', { dy: -3 });
-  }
-  b.furn('trash_bin', 5, 2, undefined, { order: 0.4 });
-  b.furn('plant_small', 1, 2, 'fern', { order: 0.2 });
-  b.wall('clock', 6, undefined, { order: 0.5 });
-
-  // cabines encostadas na parede norte (entram pela porta ao sul e somem)
-  for (let i = 0; i < 3; i++) {
-    const lx = 9 + i * 2;
+  for (const [i, r] of RESTROOMS.entries()) {
+    const west = r.look === 'm';
+    b.walk(r.x0, 2, r.x1 - r.x0 + 1, 9);
+    b.walk(r.door, 0, 2, 2);
+    b.wall('door_frame', r.door + 1, undefined, { order: 0.05 + i * 0.01 });
+    // placa ao lado da porta, do lado da cabine
+    const signX = west ? r.door + 2 : r.door - 1;
+    b.wall('restroom_sign', signX + 0.5, r.look, { order: 0.08 + i * 0.01 });
+    // pias com espelho na ponta de fora
+    const sinks = west ? [r.x0, r.x0 + 1] : [r.x1 - 1, r.x1];
+    for (const sx of sinks) {
+      b.wall('mirror', sx + 0.5, undefined, { order: 0.3 });
+      b.furn('sink', sx, 2, undefined, { order: 0.35 });
+      b.spot('sink', sx, 3, 'up', { dy: -3, restroom: r.look });
+    }
+    b.rug(sinks[0], 3.15, 2, 0.85, '#6fa3b8', 202 + i);
+    // cabine encostada na parede do meio (entra pela porta ao sul e some)
+    const lx = west ? 6 : 8;
     const stall = b.furn('toilet_stall', lx, 2, undefined, { order: 0.3 + i * 0.05 });
-    b.spot('stall', lx, 4, 'up', { furnitureId: stall, x: b.px(lx + 1), y: b.py(4) - 3, sortY: b.py(4) - 0.5 });
+    b.spot('stall', west ? lx : lx + 1, 4, 'up', { furnitureId: stall, x: b.px(lx + 1), y: b.py(4) - 3, sortY: b.py(4) - 0.5, restroom: r.look });
+    b.furn('plant_small', signX, 2, west ? 'fern' : 'flower', { order: 0.2 + i * 0.01 });
+    b.furn('trash_bin', west ? r.x0 : r.x1, 6, undefined, { order: 0.4 + i * 0.01 });
+    b.furn('plant_tall', west ? r.x0 : r.x1, 10, west ? 'ficus' : 'monstera', { order: 0.21 + i * 0.01 });
+    b.furn('plant_small', west ? r.x1 - 1 : r.x0 + 1, 10, west ? 'succulent' : 'fern', { order: 0.25 + i * 0.01 });
+    b.rug(r.x0 + 1.5, 9.9, 3, 0.9, '#9cc3cf', 204 + i);
   }
-  b.wall('poster', 1.5, 'cat', { order: 0.5 });
-  b.furn('plant_small', 14, 6, 'succulent', { order: 0.2 });
-  b.furn('plant_tall', 1, 10, 'ficus', { order: 0.21 });
-  b.furn('plant_tall', 14, 10, 'monstera', { order: 0.22 });
-  const bench = b.furn('bench', 3, 9, undefined, { order: 0.5 });
-  for (let i = 0; i < 2; i++) b.seat('bench', 'bench', 3 + i, 9, 'down', undefined, { noFurniture: true, furnitureId: bench });
-  b.furn('trash_bin', 9, 10, undefined, { order: 0.6 });
-  b.rug(2.5, 9.9, 3, 0.9, '#9cc3cf', 203);
-  b.furn('plant_small', 1, 6, 'flower', { order: 0.24 });
-  b.furn('plant_small', 12, 10, 'fern', { order: 0.25 });
+  b.area.door = { x: RESTROOMS[0].door, y: SOUTH_Y, w: 2, h: 2 };
   return b.build();
 }
 

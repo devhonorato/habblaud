@@ -138,7 +138,10 @@ export interface HermesMonitor {
 }
 
 export interface HermesProfilePanel {
+  /** Nome do perfil (a pasta em profiles/). */
   name: string;
+  /** Nome da sala no escritório (HABBLAUD_HERMES_SALAS, o "Renomear" do menu ou o perfil). */
+  room?: string;
   /** Agente principal do perfil no escritório. */
   agentId: string;
   description?: string;

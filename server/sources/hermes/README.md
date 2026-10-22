@@ -11,6 +11,9 @@ rotina do cron e outra.
 | `HABBLAUD_HERMES_DIR` | Diretório de dados do Hermes (no container dele, `/opt/data`; no host, a pasta montada lá). Sem ela, a fonte fica desligada. |
 | `HABBLAUD_OMNIROUTE_URL` | (Opcional) Link "Abrir o OmniRoute" na aba Cotas de IA. |
 | `HABBLAUD_BESZEL_URL` | (Opcional) Link "Abrir o Beszel" na aba Servidor. |
+| `HABBLAUD_HERMES_SALAS` | (Opcional) Nome exibido da sala de cada perfil: `crypto=Kairo,finance=Finanças`. Ver "Nomes da sala e dos agentes". |
+| `HABBLAUD_HERMES_NOMES` | (Opcional) Nome do agente principal (`perfil`) e do Vigia de uma rotina (`perfil/<rotina>`): `crypto=Hermes,crypto/vigia-mercado=Sentinela,finance=Atlas`. |
+| `HABBLAUD_HERMES_LEITURAS_DIAS` | (Opcional) Dias de leituras do monitor guardadas pelo Habblaud (padrão `7`; `0` desliga). Ver "Histórico das leituras". |
 | `HABBLAUD_CLIMA` | `0` desliga o tempo lá fora (open-meteo, sem chave, no máximo a cada 10 min). Lugar: `HABBLAUD_CLIMA_LAT`, `HABBLAUD_CLIMA_LON`, `HABBLAUD_CLIMA_LOCAL` (padrão: São Paulo). |
 
 No Docker, monte o diretório **só para leitura** (ex.: `-v /srv/ai/apps/hermes/data:/hermes:ro` e
@@ -19,6 +22,9 @@ Hermes (o aviso "Nenhuma pasta do Claude Code" vira informação). Recomendado n
 Limitações).
 
 ## O que é lido (nada é escrito)
+
+Nada é escrito no diretório do Hermes. O Habblaud só escreve no diretório de dados dele (`HABBLAUD_DATA_DIR`): as
+cópias dos bancos em `hermes-cache/` (último recurso, abaixo) e o histórico das leituras em `hermes-leituras/`.
 
 | Arquivo (por perfil) | Para quê |
 | --- | --- |
@@ -54,7 +60,39 @@ banco (`sqlite.ts`):
 Banco ausente, ocupado ou ilegível não derruba nada: o perfil continua na sala e o motivo vai para `/api/health`
 (`sources[].error`).
 
-## Status do agente principal
+## Nomes da sala e dos agentes
+
+A sala de um perfil continua identificada pela pasta dele (`profiles/<perfil>`): mudar o nome não muda a vaga, o
+histórico nem o personagem guardado. As duas variáveis aceitam pares `chave=valor` separados por vírgula (ou ponto e
+vírgula); pares fora do formato são ignorados com um aviso no log.
+
+**Sala (`HABBLAUD_HERMES_SALAS`).** `crypto=Kairo` faz a sala do perfil `crypto` aparecer como "Kairo" na placa, na
+barra lateral, no feed, nos avisos ("chegou em Kairo"), na gaveta do agente, no histórico do terminal e na janela do
+Hermes (abas Equipe, Conversas, Cotas e Mercado; a aba Equipe mostra "sala Kairo (perfil crypto)"). Até 40
+caracteres. O nome entra como o padrão da pasta (`RoomAliases.setDefault`, o mesmo mecanismo que chama a pasta de
+assets de "Arquiteto"), então o **Renomear** do menu da sala (guardado em `rooms.json`) vale por cima; apagar o nome
+escolhido no menu volta ao da variável.
+
+**Agentes (`HABBLAUD_HERMES_NOMES`).** A chave `perfil` dá o nome do agente principal; `perfil/<rotina>` (o nome da
+rotina no `jobs.json`, ex. `vigia-mercado`, ou o id dela) dá o nome do Vigia daquela rotina. Um `:f` ou `:m` no fim
+do nome escolhe o visual (`Sentinela:f`); sem ele, vale o do nome se ele for do pool de nomes do Habblaud (Ana = `f`),
+senão `m`. O visual continua estável: a semente da aparência é a do id do agente (`hermes:<perfil>`), que não muda
+entre execuções nem reinícios.
+
+Precedência do nome de um agente do Hermes (`Office.addMain`):
+
+1. o personagem feito no **editor de personagem** (`names.json`, por sala), quando a dona dele é este agente — vale
+   também depois de reiniciar o servidor;
+2. o nome de `HABBLAUD_HERMES_NOMES`;
+3. sem nada configurado: o principal recebe o nome sorteado (e guardado por sessão em `names.json`), o Vigia
+   "Vigia".
+
+"Voltar ao sorteio" no editor apaga o personagem e volta ao nome configurado (ou ao sorteio, sem configuração).
+Nomes são únicos no escritório (sem diferenciar maiúsculas): a variável ignora um nome repetido (fica o primeiro), e um
+nome configurado que já está em uso por outro agente (ou é o personagem do editor de outra sala) ganha a sala entre
+parênteses, como o "Vigia" já fazia ("Hermes (Kairo)"). O editor recusa um nome em uso, como antes.
+
+
 
 | Status | Quando |
 | --- | --- |
@@ -95,7 +133,7 @@ terminar ou depois de 5 min sem mensagem). A amostra usada no desenvolvimento n�
 ## Vigia
 
 Cada rotina com `monitor_script` ou `monitor_url` no `jobs.json` (ex.: `vigia-mercado`) ganha um segundo agente
-**permanente** na sala do perfil, chamado "Vigia" (papel "Vigia do mercado" quando o nome da rotina fala de mercado ou
+**permanente** na sala do perfil, chamado "Vigia" (ou o nome de `HABBLAUD_HERMES_NOMES`; papel "Vigia do mercado" quando o nome da rotina fala de mercado ou
 Kairo; senão "Vigia da rotina <nome>"; se já houver outro "Vigia", vira "Vigia (<sala>)"). Ele fica ocioso (ou sai com
 o gateway parado) e:
 
@@ -107,6 +145,26 @@ o gateway parado) e:
 
 O terminal do Vigia mostra cada checagem (com a diferença, quando chamou o principal) e, por último, a leitura
 completa do monitor (radar, instâncias, posições, eventos, avisos).
+
+### Histórico das leituras
+
+O Hermes só guarda a última leitura (`monitor_last_output.txt`, reescrito a cada checagem). O Habblaud guarda uma
+cópia de cada checagem que viu (`readings.ts`) em
+`<HABBLAUD_DATA_DIR>/hermes-leituras/<perfil>/<id da rotina>/<AAAA-MM-DD>.jsonl` (dia UTC), uma linha por checagem:
+
+- `{"at": <hora da leitura, ms>, "sig": "<hash>", "lines": [...]}` quando o conteúdo mudou (e sempre na primeira linha
+  de cada dia, para cada arquivo se ler sozinho);
+- `{"at": ..., "sig": ..., "same": true}` quando é igual à anterior: fica a hora da checagem, sem repetir o conteúdo.
+
+A hora é a do arquivo do monitor; a mesma hora não entra duas vezes (nem depois de reiniciar). As linhas já saem com
+os segredos mascarados. Os dias mais velhos que `HABBLAUD_HERMES_LEITURAS_DIAS` (padrão 7) são apagados ao subir e a
+cada hora; `0` desliga a gravação. Se o arquivo de um dia passar de 32 MB, o resto do dia não é guardado (aviso no log). Se a pasta cair
+dentro do diretório do Hermes, a gravação fica desligada.
+
+No terminal do Vigia, cada checagem (as saídas do cron) abre em **detalhes** a diferença para a leitura anterior (a do
+Hermes, quando chamou o principal; senão a calculada pelas linhas que saíram e entraram) e a leitura completa daquela
+hora ("igual à anterior" quando não mudou). A checagem casa com a leitura guardada mais próxima até 2 min; ao vivo,
+uma checagem nova espera até 20 s pela leitura. Só há leitura para as checagens vistas com o Habblaud ligado.
 
 ## Terminal e histórico
 
@@ -157,5 +215,7 @@ pasta montada; a temperatura só aparece se `/sys/class/thermal` estiver visíve
   fonte estiver ligada.
 - Sem uso de plano (5h/semanal): o cartão da conta "Hermes" mostra as cotas de IA do dia, sem barras de limite (os
   limites dos provedores não são publicados no diretório do Hermes).
-- Nome da sala = nome do perfil; a descrição do `profile.yaml` vai no título do agente (renomeie a sala pelo menu, se
-  quiser).
+- Sem `HABBLAUD_HERMES_SALAS`, o nome da sala é o do perfil; a descrição do `profile.yaml` vai no título do agente.
+- O editor de personagem guarda **um** personagem por sala (`names.json`), e o principal e o Vigia dividem a sala do
+  perfil: se os dois forem editados, o último fica com o personagem e o outro, depois de reiniciar, volta ao nome
+  configurado (ou ao sorteado).

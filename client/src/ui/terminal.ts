@@ -110,8 +110,9 @@ export function sessionKey(account: string, sessionId: string): string {
   return `session:${account}:${sessionId}`;
 }
 
-/** Nome curto do projeto de uma sessão: a última pasta do cwd (ou o nome codificado da pasta em projects/). */
-export function sessionProjectName(s: Pick<RecentSession, 'project' | 'projectDir'>): string {
+/** Nome curto do projeto de uma sessão: o nome da sala que a fonte deu, a última pasta do cwd ou o nome codificado da pasta em projects/. */
+export function sessionProjectName(s: Pick<RecentSession, 'project' | 'projectDir' | 'room'>): string {
+  if (s.room) return s.room;
   const path = s.project?.replace(/[\\/]+$/, '');
   if (path) return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1) || path;
   return s.projectDir;

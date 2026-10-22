@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { FURNITURE, TILE, type FurnitureKind, type RoomTheme } from '../../art/api';
 import { BUILDING_H, COL_W, CORRIDOR_Y, SOUTH_Y } from '../constants';
-import { assembleBuilding, coreAreas } from './building';
+import { assembleBuilding, buildWalkGrid, coreAreas } from './building';
 import { columnsFor, slotAt, slotColumn, slotRect, slotSide } from './geometry';
 import { layoutProjectRoom, roomVariant } from './room';
 import { layoutExterior, slotShell } from './exterior';
-import { RECEPTION_ID } from './core';
+import { RECEPTION_ID, RESTROOM_ID, RESTROOMS } from './core';
 import type { AreaLayout } from './types';
 
 const theme: RoomTheme = {
@@ -127,6 +127,37 @@ describe('layout do prédio', () => {
     }
   });
 
+  it('banheiros masculino e feminino: uma porta cada, parede no meio, cabine e pias de cada um', () => {
+    const area = b.core.find((a) => a.id === RESTROOM_ID)!;
+    const r = area.rect;
+    // a parede do meio não deixa passar de um banheiro para o outro por dentro
+    for (let y = r.y + 2; y < r.y + 11; y++) for (const x of [r.x + 7, r.x + 8]) expect(b.grid.walkable(x, y), `${x},${y}`).toBe(false);
+    for (const room of RESTROOMS) {
+      // a porta liga o banheiro ao corredor
+      for (const x of [r.x + room.door, r.x + room.door + 1]) {
+        for (const y of [r.y, r.y + 1]) expect(b.grid.walkable(x, y)).toBe(true);
+        expect(reachable(x, r.y - 1)).toBe(true);
+      }
+      const stalls = area.spots.filter((s) => s.kind === 'stall' && s.restroom === room.look);
+      const sinks = area.spots.filter((s) => s.kind === 'sink' && s.restroom === room.look);
+      expect(stalls).toHaveLength(1);
+      expect(sinks).toHaveLength(2);
+      // tudo dentro da metade certa e alcançável do corredor
+      for (const s of [...stalls, ...sinks]) {
+        expect(s.tx - r.x >= room.x0 && s.tx - r.x <= room.x1, s.id).toBe(true);
+        expect(reachable(s.tx, s.ty), s.id).toBe(true);
+      }
+      expect(area.wallItems.filter((w) => w.kind === 'restroom_sign' && w.variant === room.look)).toHaveLength(1);
+    }
+    // só com a área dos banheiros (sem o corredor), um banheiro não chega ao outro
+    const alone = buildWalkGrid(cols, [area]);
+    const [m, f] = RESTROOMS.map((room) => area.spots.find((s) => s.kind === 'stall' && s.restroom === room.look)!);
+    expect(alone.reachableFrom(m.tx, m.ty)[f.ty * alone.w + f.tx]).toBe(0);
+    expect(reachable(m.tx, m.ty) && reachable(f.tx, f.ty)).toBe(true);
+    expect(area.spots.every((s) => s.kind === 'stall' || s.kind === 'sink')).toBe(true);
+    expect(area.wallItems.filter((w) => w.kind === 'door_frame')).toHaveLength(2);
+  });
+
   it('spots têm ids únicos', () => {
     const ids = b.spots.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -159,7 +190,7 @@ describe('layout do prédio', () => {
 
 /** Móveis de chão altos que escondem o que está pendurado na parede logo atrás. */
 const TALL_FLOOR = new Set<FurnitureKind>(['plant_tall', 'bookshelf', 'binder_shelf', 'fridge', 'vending_machine', 'arcade', 'water_cooler', 'floor_lamp', 'toilet_stall']);
-const WALL_DECOR = new Set<FurnitureKind>(['painting', 'poster', 'window', 'tv', 'whiteboard', 'sign', 'clock', 'mirror', 'door_frame']);
+const WALL_DECOR = new Set<FurnitureKind>(['painting', 'poster', 'window', 'tv', 'whiteboard', 'sign', 'clock', 'mirror', 'door_frame', 'restroom_sign']);
 
 /** Itens de parede decorativos com algum móvel alto encostado na frente (ids). */
 function hiddenWallItems(area: AreaLayout): string[] {

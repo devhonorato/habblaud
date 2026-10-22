@@ -48,9 +48,11 @@ export function parseRecentSessions(raw: unknown): RecentSession[] {
     const title = str(o.title);
     const firstAt = num(o.firstAt);
     const agentId = str(o.agentId);
+    const room = str(o.room);
     // Ausente = Claude Code (nunca grava 'claude').
     if (o.provider === 'codex' || o.provider === 'hermes') s.provider = o.provider;
     if (project) s.project = project;
+    if (room) s.room = room;
     if (title) s.title = title;
     if (firstAt !== undefined) s.firstAt = firstAt;
     if (s.open && agentId) s.agentId = agentId;
@@ -67,7 +69,7 @@ export function filterSessions(list: readonly RecentSession[], query: string, ac
   const terms = normalizeSearch(query).split(/\s+/).filter(Boolean);
   if (!terms.length) return list.slice();
   return list.filter((s) => {
-    const hay = normalizeSearch([s.title ?? '', s.project ?? '', s.projectDir, accountLabel(s.account), isCodex(s) ? 'Codex' : ''].join(' '));
+    const hay = normalizeSearch([s.title ?? '', s.project ?? '', s.projectDir, s.room ?? '', accountLabel(s.account), isCodex(s) ? 'Codex' : ''].join(' '));
     return terms.every((t) => hay.includes(t));
   });
 }

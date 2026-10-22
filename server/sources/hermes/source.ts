@@ -22,6 +22,11 @@
 // <principal>: <motivo>" (a primeira linha nova da diferença). Uma leitura nova do monitor do Kairo pode acender a
 // sala: venda com lucro = festa, pausa por risco = alarme (cron.ts, marketEffect).
 //
+// Nomes: HABBLAUD_HERMES_SALAS dá o nome exibido da sala de cada perfil (o apelido padrão da pasta: o "Renomear" do
+// menu continua valendo por cima) e HABBLAUD_HERMES_NOMES o do principal e de cada Vigia (o personagem do editor
+// continua valendo por cima; ver Office.addMain). Cada leitura nova do monitor também vai para o histórico das leituras
+// (readings.ts), no diretório de dados do Habblaud.
+//
 // Terminal e histórico de sessões: a conversa está no SQLite, não num JSONL (transcriptPathOf devolve undefined).
 // terminalFeed() monta o terminal pelo banco e pelas saídas do cron (terminal.ts); history() lista as sessões
 // recentes de todos os perfis para o histórico do terminal. panel() monta o painel (GET /api/hermes/painel). Ver
@@ -35,12 +40,15 @@ import { errMsg, log } from '../../log';
 import type { Office, TranscriptSummary } from '../../model/office';
 import { HISTORY_DAYS } from '../history';
 import type { AgentSource, HistoryProvider, HistoryResolveResult, TerminalFeed } from '../source';
+import type { HermesAgentName } from './config';
 import { diffOf, marketEffect, parseMarket, wakeReason } from './cron';
 import { describeMessage, parseToolCalls, type HermesMessage } from './describe';
 import { OutputIndex, readAgentLogs, readUsageAudit, SystemReader, utcDay, WeatherService, type SystemReaderOptions, type WeatherOptions } from './panel';
 import { discoverProfiles, jobIdOfSession, parseGateway, parseHeartbeat, parseJobs, parseProfileDescription, SmallFile, type CronJob, type HermesProfile } from './profiles';
 import { loadSqlite, ReadOnlyDb, type ReadMode, type SqliteDatabase, type SqliteModule } from './sqlite';
+import type { ReadingStore } from './readings';
 import { MainFeed, readMonitorLines, SessionFeed, VigiaFeed } from './terminal';
+import { normalizeCwd } from '../../model/rooms';
 import { tr } from '../../../shared/i18n';
 
 /** Mensagem nos últimos 60 s (turno ainda aberto) = trabalhando. */
@@ -123,6 +131,14 @@ export interface HermesSourceOptions {
   links?: HermesPanel['links'];
   /** Leitura do computador (testes trocam /proc, /sys e o os). */
   system?: Partial<SystemReaderOptions>;
+  /** HABBLAUD_HERMES_SALAS: perfil -> nome exibido da sala (aplicado por `setRoomName`). */
+  roomNames?: ReadonlyMap<string, string>;
+  /** Dá o nome padrão da sala de uma pasta (RoomAliases.setDefault: o nome escolhido no menu vale por cima). */
+  setRoomName?: (path: string, name: string) => void;
+  /** HABBLAUD_HERMES_NOMES: "perfil" ou "perfil/rotina" -> nome do agente. */
+  agentNames?: ReadonlyMap<string, HermesAgentName>;
+  /** Histórico das leituras do monitor (HABBLAUD_HERMES_LEITURAS_DIAS); ausente = desligado. */
+  readings?: ReadingStore;
 }
 
 /** Uma linha de `sessions` (só o que usamos). */
@@ -333,7 +349,12 @@ export class HermesSource implements AgentSource {
       const jobs = () => t.jobs.read() ?? [];
       if (agentId === t.key) return new MainFeed({ state: t.state, dir: t.profile.dir, jobs });
       for (const v of t.vigias.values()) {
-        if (v.key === agentId) return new VigiaFeed(t.profile.dir, v.job, () => this.opts.office.get(t.key)?.name ?? t.profile.name);
+        if (v.key !== agentId) continue;
+        const store = this.opts.readings?.enabled ? this.opts.readings : undefined;
+        return new VigiaFeed(t.profile.dir, v.job, () => this.opts.office.get(t.key)?.name ?? t.profile.name, {
+          now: this.now,
+          ...(store ? { readings: (from: number, to: number) => store.list(t.profile.name, v.job.id, from, to) } : {}),
+        });
       }
     }
     return undefined;
@@ -383,7 +404,10 @@ export class HermesSource implements AgentSource {
     for (const p of found) {
       const key = `${this.accountId}:${p.name}`;
       seen.add(key);
-      if (!this.trackers.has(key)) this.trackers.set(key, this.newTracker(p, key));
+      if (this.trackers.has(key)) continue;
+      const room = this.opts.roomNames?.get(p.name);
+      if (room) this.opts.setRoomName?.(this.roomPathOf(p), room);
+      this.trackers.set(key, this.newTracker(p, key));
     }
     for (const [key, t] of [...this.trackers]) {
       if (seen.has(key)) continue;
@@ -393,6 +417,17 @@ export class HermesSource implements AgentSource {
       t.execs?.close();
       this.trackers.delete(key);
     }
+  }
+
+  /** Pasta da sala do perfil (o "default" na raiz ganha uma pasta própria, para não virar a sala do diretório todo). */
+  private roomPathOf(profile: HermesProfile): string {
+    return profile.name === 'default' && profile.dir === this.opts.dir ? join(this.opts.dir, 'profiles', 'default') : profile.dir;
+  }
+
+  /** Nome exibido da sala do perfil (o do escritório: apelido do menu, HABBLAUD_HERMES_SALAS ou a pasta). */
+  private roomNameOf(t: ProfileTracker): string {
+    const office = this.opts.office;
+    return office.roomName(office.get(t.key)?.roomId ?? normalizeCwd(this.roomPathOf(t.profile)));
   }
 
   private newTracker(profile: HermesProfile, key: string): ProfileTracker {
@@ -480,16 +515,18 @@ export class HermesSource implements AgentSource {
   }
 
   private enter(t: ProfileTracker, now: number): void {
+    const fixed = this.opts.agentNames?.get(t.profile.name);
     this.opts.office.addMain({
       id: t.key,
       provider: 'hermes',
       account: this.accountId,
       // Fixo por perfil: o personagem (nome, aparência) é o mesmo em todas as execuções.
       sessionId: `hermes-${t.profile.name}`,
-      cwd: t.profile.name === 'default' && t.profile.dir === this.opts.dir ? join(this.opts.dir, 'profiles', 'default') : t.profile.dir,
+      cwd: this.roomPathOf(t.profile),
       role: MAIN_ROLE,
       startedAt: now,
       status: t.status,
+      ...(fixed ? { name: fixed.name, look: fixed.look } : {}),
     });
     t.inOffice = this.opts.office.has(t.key);
   }
@@ -630,16 +667,19 @@ export class HermesSource implements AgentSource {
 
   private enterVigia(t: ProfileTracker, v: VigiaTracker, now: number): void {
     const office = this.opts.office;
+    const names = this.opts.agentNames;
+    const fixed = names?.get(`${t.profile.name}/${v.job.name}`) ?? names?.get(`${t.profile.name}/${v.job.id}`);
     office.addMain({
       id: v.key,
       provider: 'hermes',
       account: this.accountId,
       sessionId: `hermes-${t.profile.name}-vigia-${v.job.id}`,
-      cwd: t.profile.name === 'default' && t.profile.dir === this.opts.dir ? join(this.opts.dir, 'profiles', 'default') : t.profile.dir,
+      cwd: this.roomPathOf(t.profile),
       role: /mercado|market|kairo/i.test(v.job.name) ? tr('Vigia do mercado') : tr('Vigia da rotina {0}', [v.job.name]),
       startedAt: now,
       status: v.status,
-      name: tr('Vigia'),
+      name: fixed?.name ?? tr('Vigia'),
+      ...(fixed ? { look: fixed.look } : {}),
     });
     v.inOffice = office.has(v.key);
   }
@@ -728,6 +768,8 @@ export class HermesSource implements AgentSource {
     if (sig === v.readSig) return;
     const first = !v.readSig;
     v.readSig = sig;
+    // Histórico das leituras (cada checagem reescreve o arquivo; o conteúdo igual entra só com a hora).
+    this.opts.readings?.record(t.profile.name, v.job.id, r.at, r.lines);
     const prev = v.market;
     v.market = parseMarket(r.lines);
     // A primeira leitura (no boot ou ao entrar) não é novidade: só guarda o mercado para comparar.
@@ -850,6 +892,7 @@ export class HermesSource implements AgentSource {
         return db.prepare(`SELECT ${cols.join(', ')} FROM sessions WHERE started_at >= ? ORDER BY started_at DESC LIMIT 60`).all(since) as unknown as Array<SessionRow & { message_count?: number }>;
       });
       const jobs = t.jobs.read() ?? [];
+      const room = this.roomNameOf(t);
       for (const s of rows ?? []) {
         if (s.parent_session_id) continue;
         const firstAt = s.started_at ? Math.round(s.started_at * 1000) : undefined;
@@ -864,6 +907,7 @@ export class HermesSource implements AgentSource {
           sessionId: `${t.profile.name}~${s.id}`,
           project: t.profile.dir,
           projectDir: t.profile.name,
+          room,
           lastAt,
           size: num(s.message_count) ?? 0,
           open,
@@ -918,6 +962,7 @@ export class HermesSource implements AgentSource {
       const running = new Set(t.execRows.map((r) => r.job_id));
       const p: HermesProfilePanel = {
         name: t.profile.name,
+        room: this.roomNameOf(t),
         agentId: t.key,
         tokensToday: audit.tokens,
         runsToday: audit.runs,

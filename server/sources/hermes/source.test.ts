@@ -9,7 +9,10 @@ import { setQuiet } from '../../log';
 import { NameStore } from '../../model/names';
 import { Office } from '../../model/office';
 import { tempDir } from '../../test/fixtures';
-import { HermesSource, HEARTBEAT_STALE_MS, WORKING_RECENT_MS } from './source';
+import { RoomAliases } from '../../model/room-aliases';
+import { hermesAgentNames, hermesRoomNames } from './config';
+import { ReadingStore } from './readings';
+import { HermesSource, HEARTBEAT_STALE_MS, WORKING_RECENT_MS, type HermesSourceOptions } from './source';
 import { loadSqlite, ReadOnlyDb, type SqliteDatabase } from './sqlite';
 
 setQuiet(true);
@@ -54,7 +57,7 @@ CREATE TABLE executions (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, source TEXT 
 
 const JOB = '6099beb48bf4';
 
-function setup() {
+function setup(extra: Partial<Pick<HermesSourceOptions, 'roomNames' | 'agentNames' | 'readings'>> & { names?: NameStore } = {}) {
   const tmp = tempDir('habblaud-hermes-');
   cleanups.push(tmp.cleanup);
   const root = tmp.dir;
@@ -75,8 +78,11 @@ function setup() {
 
   const late: { office?: Office } = {};
   const accounts = new AccountsService({ dirs: [], home: root, env: {}, now, onChange: () => late.office?.markDirty() });
+  const { names, ...opts } = extra;
+  const aliases = new RoomAliases(null);
   const office = new Office({
-    names: new NameStore(null),
+    names: names ?? new NameStore(null),
+    roomAlias: (path) => aliases.get(path),
     version: 'teste',
     startedAt: clock,
     accounts: (s) => accounts.list(s),
@@ -85,7 +91,16 @@ function setup() {
     now,
   });
   late.office = office;
-  const source = new HermesSource({ office, accounts, dir: root, now, sqlite, tmpDir: join(root, '..', `${tmp.dir.split(/[\\/]/).pop()}-cache`) });
+  const source = new HermesSource({
+    office,
+    accounts,
+    dir: root,
+    now,
+    sqlite,
+    tmpDir: join(root, '..', `${tmp.dir.split(/[\\/]/).pop()}-cache`),
+    setRoomName: (path, name) => aliases.setDefault(path, name),
+    ...opts,
+  });
   cleanups.push(() => source.stop());
 
   let seq = 0;
@@ -107,6 +122,7 @@ function setup() {
 
   return {
     root,
+    aliases,
     crypto,
     finance,
     state,
@@ -504,5 +520,120 @@ describe('fonte do Hermes: o feed do boot não traz as checagens do Vigia', () =
     const vid = `hermes:crypto:vigia:${JOB}`;
     expect(h.history(vid).map((a) => a.text)).toContain('Checagem: sem mudança');
     expect(h.office.recentFeed(50).some((f) => f.agentId === vid)).toBe(false);
+  });
+});
+
+describe('fonte do Hermes: nomes da sala e dos agentes (HABBLAUD_HERMES_SALAS, HABBLAUD_HERMES_NOMES)', () => {
+  const monitor = (h: ReturnType<typeof setup>) =>
+    writeFileSync(join(h.crypto, 'cron', 'jobs.json'), JSON.stringify({ jobs: [{ id: JOB, name: 'vigia-mercado', enabled: true, monitor_script: 'v.py' }] }));
+  const env = {
+    HABBLAUD_HERMES_SALAS: 'crypto=Kairo, finance = Finanças',
+    HABBLAUD_HERMES_NOMES: 'crypto=Hermes,crypto/vigia-mercado=Sentinela:f,finance=Atlas',
+  };
+
+  it('a sala do perfil ganha o nome configurado (id estável pela pasta) e aparece no aviso, no painel e no histórico', async () => {
+    const h = setup({ roomNames: hermesRoomNames(env), agentNames: hermesAgentNames(env) });
+    monitor(h);
+    const sid = `cron_${JOB}_20261022_180000`;
+    h.session(sid, { ended: T0 / 1000 + 30 });
+    h.message(sid, 'user', { content: 'Revise' });
+    h.source.boot();
+    const r = h.office.commit();
+    const main = r.snapshot.agents.find((a) => a.id === 'hermes:crypto')!;
+    expect(r.snapshot.rooms.map((x) => x.name).sort()).toEqual(['Finanças', 'Kairo']);
+    expect(main.name).toBe('Hermes');
+    expect(r.snapshot.agents.find((a) => a.id === `hermes:crypto:vigia:${JOB}`)).toMatchObject({ name: 'Sentinela', look: 'f' });
+    expect(r.snapshot.agents.find((a) => a.id === 'hermes:finance')!.name).toBe('Atlas');
+    expect(h.source.panel().profiles.find((p) => p.name === 'crypto')).toMatchObject({ room: 'Kairo' });
+    const list = await h.source.history().list();
+    expect(list[0]).toMatchObject({ projectDir: 'crypto', room: 'Kairo' });
+    // o "Renomear" do menu continua valendo por cima
+    h.aliases.set(h.office.roomPath(main.roomId)!, 'Mesa do Kairo');
+    h.office.refreshRoomNames();
+    expect(h.office.roomName(main.roomId)).toBe('Mesa do Kairo');
+  });
+
+  it('sem as variáveis: sala com o nome do perfil, principal sorteado e o Vigia "Vigia"', () => {
+    const h = setup();
+    monitor(h);
+    h.source.boot();
+    const r = h.office.commit();
+    expect(r.snapshot.rooms.map((x) => x.name).sort()).toEqual(['crypto', 'finance']);
+    expect(r.snapshot.agents.find((a) => a.id === `hermes:crypto:vigia:${JOB}`)!.name).toBe('Vigia');
+    expect(h.source.panel().profiles.find((p) => p.name === 'crypto')).toMatchObject({ room: 'crypto' });
+  });
+
+  it('o personagem do editor (names.json) vale por cima do nome configurado, também depois de reiniciar', () => {
+    const names = new NameStore(null);
+    const h = setup({ agentNames: hermesAgentNames(env), names });
+    monitor(h);
+    h.source.boot();
+    expect(h.office.setCharacter('hermes:crypto', { name: 'Hermes Trader', seed: 5, parts: {} })).toEqual({ result: 'ok' });
+    h.source.stop();
+    // mesmo diretório e mesmo names.json: o personagem do editor volta
+    const root = h.root;
+    const office = new Office({ names, version: 't', startedAt: T0, accounts: () => [], sources: () => [], accountName: () => undefined, now: () => T0 });
+    const accounts = new AccountsService({ dirs: [], home: root, env: {}, now: () => T0, onChange: () => office.markDirty() });
+    const again = new HermesSource({ office, accounts, dir: root, now: () => T0, sqlite, agentNames: hermesAgentNames(env), tmpDir: join(root, '..', 'cache2') });
+    cleanups.push(() => again.stop());
+    again.boot();
+    expect(office.get('hermes:crypto')).toMatchObject({ name: 'Hermes Trader', seed: 5, custom: true });
+    expect(office.get(`hermes:crypto:vigia:${JOB}`)!.name).toBe('Sentinela');
+  });
+});
+
+describe('fonte do Hermes: histórico das leituras do Vigia', () => {
+  const monitorJobs = (h: ReturnType<typeof setup>) =>
+    writeFileSync(join(h.crypto, 'cron', 'jobs.json'), JSON.stringify({ jobs: [{ id: JOB, name: 'vigia-mercado', enabled: true, schedule_display: 'every 5m', monitor_script: 'v.py' }] }));
+
+  it('cada checagem guarda a leitura (a igual só com a hora), fora do diretório do Hermes, e o terminal mostra a leitura daquela hora', () => {
+    const data = tempDir('habblaud-leituras-');
+    cleanups.push(data.cleanup);
+    let clock = T0;
+    const readings = new ReadingStore({ dir: join(data.dir, 'hermes-leituras'), days: 7, now: () => clock });
+    const h = setup({ readings });
+    monitorJobs(h);
+    const out = join(h.crypto, 'cron', 'output', JOB);
+    mkdirSync(out, { recursive: true });
+    const monitorFile = join(out, 'monitor_last_output.txt');
+    const check = (at: number, text: string, md: string) => {
+      writeFileSync(monitorFile, text);
+      utimesSync(monitorFile, new Date(at), new Date(at));
+      const d = new Date(at);
+      const p = (n: number) => String(n).padStart(2, '0');
+      writeFileSync(join(out, `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}_${p(d.getUTCHours())}-${p(d.getUTCMinutes())}-${p(d.getUTCSeconds())}.md`), md);
+    };
+    const noChange = '# Cron Job: vigia-mercado\n\n**Status:** no_change (agent run suppressed)\n';
+    check(T0 - 600_000, 'mandato ativo=True disponivel~31\nradar AAAUSDT nota~90 1h\n', noChange);
+    h.source.boot();
+    check(T0 - 300_000, 'mandato ativo=True disponivel~31\nradar AAAUSDT nota~90 1h\n', noChange);
+    h.advance(1_000);
+    h.poll();
+    check(T0, 'mandato ativo=True disponivel~31\nradar BBBUSDT nota~85 4h\n', '# Cron Job: vigia-mercado\n\n## Prompt\n\nx\n\n## Response\n\nOlhei.\n');
+    h.advance(1_000);
+    h.poll();
+
+    const list = readings.list('crypto', JOB);
+    expect(list.map((r) => [r.at, r.same])).toEqual([
+      [T0 - 600_000, false],
+      [T0 - 300_000, true],
+      [T0, false],
+    ]);
+    expect(list[1].lines).toEqual(list[0].lines);
+    // nada foi escrito no diretório do Hermes
+    expect(readdirSync(out).filter((f) => !f.endsWith('.md') && f !== 'monitor_last_output.txt')).toEqual([]);
+    // reiniciar não duplica a última
+    expect(readings.record('crypto', JOB, T0, ['mandato ativo=True disponivel~31', 'radar BBBUSDT nota~85 4h'])).toBe(false);
+
+    const feed = h.source.terminalFeed(`hermes:crypto:vigia:${JOB}`)!.load(100);
+    const checks = feed.entries.filter((e) => e.kind === 'system' && e.id !== 'v-intro');
+    expect(checks).toHaveLength(3);
+    const detail = (i: number) => (checks[i].kind === 'system' ? (checks[i].detail ?? '') : '');
+    expect(detail(0)).toContain('radar AAAUSDT nota~90 1h');
+    expect(detail(1)).toContain('igual à anterior');
+    expect(detail(2)).toContain('-radar AAAUSDT nota~90 1h');
+    expect(detail(2)).toContain('+radar BBBUSDT nota~85 4h');
+    expect(detail(2)).toContain('Leitura completa');
+
   });
 });

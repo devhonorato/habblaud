@@ -37,7 +37,8 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
-import { hermesLinks, hermesWeather } from './sources/hermes/config';
+import { hermesAgentNames, hermesLinks, hermesReadingDays, hermesRoomNames, hermesWeather } from './sources/hermes/config';
+import { ReadingStore } from './sources/hermes/readings';
 import { HermesSource } from './sources/hermes/source';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
@@ -144,9 +145,26 @@ if (codex) agents.add(codex);
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
 // Hermes Agent (sources/hermes/): só com HABBLAUD_HERMES_DIR, o diretório de dados dele (somente leitura). Cada perfil
-// vira uma sala com um agente permanente. As cópias dos bancos (quando não dá para lê-los no lugar) ficam no dataDir.
+// vira uma sala com um agente permanente. As cópias dos bancos (quando não dá para lê-los no lugar) e o histórico das
+// leituras do Vigia ficam no dataDir. HABBLAUD_HERMES_SALAS dá o nome padrão da sala (o "Renomear" vale por cima) e
+// HABBLAUD_HERMES_NOMES o dos agentes (o personagem do editor vale por cima).
+const hermesReadings = config.hermesDir
+  ? new ReadingStore({ dir: join(config.dataDir, 'hermes-leituras'), days: hermesReadingDays(process.env), hermesDir: config.hermesDir })
+  : undefined;
+hermesReadings?.prune();
 const hermes = config.hermesDir
-  ? new HermesSource({ accounts, office, dir: config.hermesDir, tmpDir: join(config.dataDir, 'hermes-cache'), weather: hermesWeather(process.env), links: hermesLinks(process.env) })
+  ? new HermesSource({
+      accounts,
+      office,
+      dir: config.hermesDir,
+      tmpDir: join(config.dataDir, 'hermes-cache'),
+      weather: hermesWeather(process.env),
+      links: hermesLinks(process.env),
+      roomNames: hermesRoomNames(process.env),
+      setRoomName: (path, name) => roomAliases.setDefault(path, name),
+      agentNames: hermesAgentNames(process.env),
+      readings: hermesReadings,
+    })
   : undefined;
 if (hermes) agents.add(hermes);
 late.office = office;

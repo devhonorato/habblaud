@@ -16,7 +16,7 @@ export interface HermesProfile {
 }
 
 /** Nome de perfil aceito (é a pasta em profiles/: nada de caminhos). */
-const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+export const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 /** A pasta parece um perfil do Hermes (tem o banco ou o cron). */
 function looksLikeProfile(dir: string): boolean {

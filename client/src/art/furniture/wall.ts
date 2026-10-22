@@ -348,6 +348,41 @@ export function sign(): BufFurniture {
   return { base: s };
 }
 
+/** Placa do banheiro ao lado da porta: ♂ branco no azul (masculino) ou ♀ branco no rosa (feminino). */
+export function restroomSign(variant: string | undefined): BufFurniture {
+  const s = wallSheet(1);
+  const b = s.buf;
+  const female = variant === 'f';
+  const fr = ramp(female ? '#d4558e' : '#3f7ccc', 0.07);
+  const x = 2;
+  const y = -28;
+  const w = 12;
+  const h = 14;
+  b.rect(x, y, w, h, fr.base);
+  b.hline(x, x + w - 1, y, fr.hi);
+  b.vline(x, y, y + h - 1, fr.lt);
+  b.vline(x + w - 1, y, y + h - 1, fr.dk);
+  b.hline(x, x + w - 1, y + h - 1, fr.dd);
+  const ink = '#ffffff';
+  if (female) {
+    // ♀: anel em cima, haste e travessa embaixo
+    b.ellipse(8, -24, 3.5, 3.5, ink);
+    b.ellipse(8, -24, 1.6, 1.6, fr.base);
+    b.rect(7, -20, 2, 5, ink);
+    b.hline(5, 10, -18, ink);
+  } else {
+    // ♂: anel embaixo à esquerda e a seta para cima à direita
+    b.ellipse(6.5, -19.5, 3.5, 3.5, ink);
+    b.ellipse(6.5, -19.5, 1.6, 1.6, fr.base);
+    b.line(9, -22, 11, -24, ink);
+    b.hline(9, 12, -25, ink);
+    b.vline(12, -25, -22, ink);
+  }
+  b.outline();
+  wallShadow(b, x - 1, y - 1, w + 2, h + 2);
+  return { base: s };
+}
+
 export function mirror(): BufFurniture {
   const s = wallSheet(1);
   const b = s.buf;

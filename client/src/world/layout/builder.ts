@@ -20,6 +20,7 @@ export interface SpotOpts {
   deskId?: string;
   rank?: number;
   side?: 'S' | 'N';
+  restroom?: 'f' | 'm';
   /** Posição final absoluta em px (substitui o cálculo pelo tile). */
   x?: number;
   y?: number;
@@ -134,6 +135,7 @@ export class AreaBuilder {
       rank: opts.rank,
       side: opts.side,
     };
+    if (opts.restroom) s.restroom = opts.restroom;
     this.area.spots.push(s);
     return s;
   }

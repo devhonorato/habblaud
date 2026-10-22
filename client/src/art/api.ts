@@ -166,6 +166,7 @@ export type FurnitureKind =
   | 'elevator' // 2 tiles. Porta de elevador; state 0..4 = porta fechada .. totalmente aberta. Inclui luz/seta acima.
   | 'door_frame' // 2 tiles. Batente desenhado sobre a passagem na face da parede norte.
   | 'sign' // 3 tiles. Placa com o nome da sala; rects.sign = área do texto (o render escreve o nome).
+  | 'restroom_sign' // 1 tile. Placa do banheiro: variants 'm' (♂ masculino, azul) | 'f' (♀ feminino, rosa).
   | 'mirror' // 1 tile. Espelho (acima das pias do banheiro). (Aditivo) rects.glass = área refletora (o mundo pode desenhar o reflexo de quem está na frente).
   | 'shelf_wall' // 2 tiles. Prateleira de parede com objetos.
   // --- copa / café
@@ -243,6 +244,7 @@ export const FURNITURE: Readonly<Record<FurnitureKind, FurnitureDef>> = {
   elevator: { mount: 'wall', footprint: { w: 2, h: 0 }, blocks: false, states: 5 },
   door_frame: { mount: 'wall', footprint: { w: 2, h: 0 }, blocks: false },
   sign: { mount: 'wall', footprint: { w: 3, h: 0 }, blocks: false },
+  restroom_sign: { mount: 'wall', footprint: { w: 1, h: 0 }, blocks: false, variants: ['m', 'f'] },
   mirror: { mount: 'wall', footprint: { w: 1, h: 0 }, blocks: false },
   shelf_wall: { mount: 'wall', footprint: { w: 2, h: 0 }, blocks: false },
   counter: { mount: 'floor', footprint: { w: 1, h: 1 }, blocks: true, variants: ['plain', 'drawers'] },

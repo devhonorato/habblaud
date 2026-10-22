@@ -125,6 +125,8 @@ export interface SpotDef {
   rank?: number;
   /** Lado da ilha: 'S' = de costas (tela visível), 'N' = de frente (desk_back). */
   side?: 'S' | 'N';
+  /** Cabine ou pia de um banheiro masculino ('m') ou feminino ('f'): só quem tem esse `look` usa. */
+  restroom?: 'f' | 'm';
 }
 
 export interface AreaLayout {

@@ -3475,4 +3475,16 @@ export const FR: Readonly<Record<string, string>> = {
   "{0} · mudou: chamou {1}{2}": "{0} · changé : a appelé {1}{2}",
   "**Última leitura do monitor** ({0})": "**Dernière lecture du moniteur** ({0})",
   "Vigia da rotina {0}{1}: roda o monitor sem gastar o modelo e só chama {2} quando a leitura muda": "Veilleur de la routine {0}{1} : lance le moniteur sans consommer le modèle et n'appelle {2} que si la lecture change",
+
+  // HABBLAUD_HERMES_SALAS / HABBLAUD_HERMES_NOMES, banheiros e leituras do Vigia
+  "sala {0} (perfil {1})": "salle {0} (profil {1})",
+  "♂ Masculino": "♂ Hommes",
+  "♀ Feminino": "♀ Femmes",
+  "{0}: ignorando {1}": "{0} : {1} ignoré(s)",
+  "Leituras do Vigia desligadas: {0} fica dentro do diretório do Hermes, que é só leitura.": "Lectures du Veilleur désactivées : {0} se trouve dans le répertoire de Hermes, qui est en lecture seule.",
+  "Leituras do Vigia: {0} passou de 32 MB; o resto do dia não é guardado.": "Lectures du Veilleur : {0} dépasse 32 Mo ; le reste de la journée n'est pas conservé.",
+  "Não foi possível guardar a leitura do Vigia em {0} ({1}).": "Impossible d'enregistrer la lecture du Veilleur dans {0} ({1}).",
+  "Diferença para a leitura anterior:": "Différence avec la lecture précédente :",
+  "Leitura completa ({0}, igual à anterior):": "Lecture complète ({0}, identique à la précédente) :",
+  "Leitura completa ({0}):": "Lecture complète ({0}) :",
 };

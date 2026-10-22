@@ -536,6 +536,8 @@ export interface RecentSession {
   project?: string;
   /** Nome da pasta do projeto em `projects/` (o cwd codificado), para quando `project` falta. */
   projectDir: string;
+  /** Nome da sala, quando a fonte dá um diferente da pasta (ex.: a sala de um perfil do Hermes). */
+  room?: string;
   /** Título como o do agente: /rename > nome do agente > título automático > último prompt (ou o primeiro). */
   title?: string;
   /** Primeira e última atividade com horário (epoch ms); `lastAt` cai no mtime do arquivo sem horário no fim. */

@@ -26,6 +26,17 @@ do meio (0.**3**.0).
   RAM, disco, temperatura e ligado há, as cotas por modelo e provedor com os limites/429 do dia, as rotinas de cada
   perfil, a resposta de cada rodada e o mercado do Kairo (também pela TV do lounge e pelo quadro branco da sala). Venda
   com lucro acende festa na sala; pausa por risco, alarme.
+- **Hermes: nome da sala e dos agentes.** `HABBLAUD_HERMES_SALAS` (ex.: `crypto=Kairo,finance=Finanças`) dá o nome
+  da sala de cada perfil na placa, na barra lateral, no feed, nos avisos, no histórico do terminal e na janela do
+  Hermes; `HABBLAUD_HERMES_NOMES` (ex.: `crypto=Hermes,crypto/vigia-mercado=Sentinela`) fixa o nome do agente
+  principal e de cada Vigia no lugar do sorteado. O "Renomear" da sala e o personagem feito no editor continuam
+  valendo por cima, também depois de reiniciar, e "Voltar ao sorteio" volta ao nome configurado.
+- **Hermes: histórico das leituras do Vigia.** Cada checagem do monitor fica guardada no diretório de dados do
+  Habblaud (`hermes-leituras/`, 7 dias por padrão, `HABBLAUD_HERMES_LEITURAS_DIAS`), sem repetir o conteúdo igual. No
+  terminal do Vigia, cada checagem abre a leitura completa daquela hora e a diferença para a anterior.
+- **Banheiros masculino e feminino.** O banheiro do prédio virou dois, lado a lado, com parede no meio, uma porta
+  para o corredor cada, placa ♂/♀ ao lado da porta e o nome de cada um na visão de longe. Cada personagem usa a
+  cabine, a pia e o espelho do banheiro do seu visual.
 
 ## [1.0.3] - 2026-10-16
 

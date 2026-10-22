@@ -484,6 +484,9 @@ em `shared/world/city.ts` (fonte da verdade; o servidor do mundo guarda a cópia
 | `HABBLAUD_CODEX` | ligado | `0` desliga a fonte do Codex |
 | `HABBLAUD_CODEX_DIRS` | — | pastas do Codex separadas por vírgula; substitui a detecção (`CODEX_HOME` e `~/.codex*`) |
 | `HABBLAUD_HERMES_DIR` | — | diretório de dados do Hermes Agent (somente leitura); liga a fonte do Hermes (`sources/hermes/README.md`) |
+| `HABBLAUD_HERMES_SALAS` | — | nome exibido da sala de cada perfil do Hermes, ex.: `crypto=Kairo,finance=Finanças` (o "Renomear" vale por cima) |
+| `HABBLAUD_HERMES_NOMES` | — | nome do agente principal (`perfil`) e do Vigia (`perfil/rotina`) do Hermes, ex.: `crypto=Hermes,crypto/vigia-mercado=Sentinela:f` (o personagem do editor vale por cima) |
+| `HABBLAUD_HERMES_LEITURAS_DIAS` | `7` | dias de leituras do monitor do Vigia guardadas em `<HABBLAUD_DATA_DIR>/hermes-leituras` (`0` desliga) |
 | `HABBLAUD_CODEX_BIN` | `codex` do PATH | binário do Codex para o `codex queue` (modo Node e `npm run codex:bridge`) |
 | `HABBLAUD_MENSAGENS` | ligado (com o terminal) | `0`, `false`, `off` ou `no` desligam só as mensagens pelo escritório |
 | `HABBLAUD_CLAUDE_DIRS` | — | config dirs separados por vírgula; substitui a detecção (`~/.claude*` com `projects/` ou `sessions/` + `CLAUDE_CONFIG_DIR`) |
