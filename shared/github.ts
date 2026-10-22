@@ -183,6 +183,20 @@ export class RoomEffects {
     return true;
   }
 
+  /**
+   * Efeito de outra origem (ex.: o mercado do Kairo): uma festa passa na frente do alarme enquanto dura; um alarme novo
+   * encerra a festa. true se o efeito visível mudou.
+   */
+  set(roomId: string, kind: RoomEffect['kind'], text: string, ms: number, now: number, agentId?: string): boolean {
+    const slots = this.rooms.get(roomId) ?? {};
+    const fx: RoomEffect = { kind, text, at: now, until: now + ms };
+    if (agentId) fx.agentId = agentId;
+    if (kind === 'alarm') delete slots.party;
+    slots[kind] = fx;
+    this.rooms.set(roomId, slots);
+    return true;
+  }
+
   /** Efeito visível da sala agora (a festa na frente do alarme), ou undefined. */
   get(roomId: string, now: number): RoomEffect | undefined {
     const slots = this.rooms.get(roomId);

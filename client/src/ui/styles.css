@@ -11156,3 +11156,254 @@ html.is-replay #world {
 .ui-world-chip__visitors[hidden] {
   display: none;
 }
+
+/* ------------------------------------------------------------------ Hermes: cartão de cotas e painel (ui/hermes.ts) */
+
+.ui-hq {
+  cursor: pointer;
+}
+
+.ui-hq__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.ui-hq__main {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-hq__state,
+.ui-hp-badge {
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b9c3d6;
+  background: rgba(150, 165, 195, 0.14);
+  white-space: nowrap;
+}
+
+.ui-hq__state[data-level='ok'],
+.ui-hp-badge.is-ok {
+  color: #7ee2a8;
+  background: rgba(61, 220, 132, 0.14);
+}
+
+.ui-hq__state[data-level='warn'],
+.ui-hp-badge.is-warn {
+  color: #ffd27a;
+  background: rgba(240, 185, 11, 0.16);
+}
+
+.ui-hq__state[data-level='crit'],
+.ui-hp-badge.is-crit {
+  color: #ff8a80;
+  background: rgba(255, 92, 92, 0.16);
+}
+
+.ui-hermes-cta {
+  width: 100%;
+  height: 32px;
+  margin-top: 8px;
+  background: rgba(217, 164, 65, 0.12);
+  border-color: rgba(217, 164, 65, 0.35);
+}
+
+.ui-hp {
+  width: min(880px, calc(100vw - 32px));
+  height: min(86vh, 860px);
+}
+
+.ui-hp__head {
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.ui-hp__title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.ui-hp__clock,
+.ui-hp__weather,
+.ui-hp__status,
+.ui-hp__when,
+.ui-hp__note,
+.ui-hp__empty {
+  color: var(--ui-muted);
+  font-size: 12px;
+}
+
+.ui-hp__clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-hp__tabs {
+  margin-left: auto;
+}
+
+.ui-hp__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 22px 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ui-hp__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ui-hp__section > select {
+  align-self: flex-start;
+}
+
+.ui-hp__section h3 {
+  margin-top: 6px;
+  font: 700 14px/1.3 var(--font-ui);
+}
+
+.ui-hp__section h4 {
+  margin-top: 4px;
+  font: 600 12.5px/1.3 var(--font-ui);
+  color: var(--ui-muted);
+}
+
+.ui-hp__lead {
+  font-size: 13.5px;
+}
+
+.ui-hp-bar {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(70px, auto);
+  align-items: center;
+  gap: 10px;
+}
+
+.ui-hp-bar__track {
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.ui-hp-bar__fill {
+  display: block;
+  height: 100%;
+  width: calc(var(--pct, 0) * 1%);
+  background: #4fb3ff;
+  transition: width 0.4s var(--ease);
+}
+
+.ui-hp-bar.is-ok .ui-hp-bar__fill {
+  background: #3ddc84;
+}
+
+.ui-hp-bar.is-warn .ui-hp-bar__fill {
+  background: #f0b90b;
+}
+
+.ui-hp-bar.is-crit .ui-hp-bar__fill {
+  background: #ff5c5c;
+}
+
+.ui-hp-bar__value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ui-hp__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.ui-hp__table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ui-muted);
+}
+
+.ui-hp__table :is(th, td) {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--ui-line);
+  vertical-align: top;
+}
+
+.ui-hp__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 16px;
+  font-size: 12.5px;
+}
+
+.ui-hp__mono,
+.ui-hp__pre {
+  font: 12px/1.45 var(--font-mono, ui-monospace, Consolas, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ui-hp__mono.is-crit {
+  color: #ff8a80;
+}
+
+.ui-hp__pre {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.ui-hp__card,
+.ui-hp__talk {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-bg-soft);
+}
+
+.ui-hp__card h3 {
+  margin-top: 0;
+}
+
+.ui-hp__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ui-hp__job {
+  padding-top: 6px;
+  border-top: 1px solid var(--ui-line);
+}
+
+.ui-hp__md {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ui-hp__md :is(ul, ol) {
+  padding-left: 18px;
+}
+
+.ui-hp__md :is(h1, h2, h3, h4) {
+  margin: 8px 0 4px;
+  font-size: 13.5px;
+}

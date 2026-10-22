@@ -285,7 +285,7 @@ export function toolResultError(content: string | null | undefined): string | un
 
 /** Prompt do cron montado pelo Hermes (não é o texto que alguém digitou). */
 export function isCronPrompt(text: string): boolean {
-  return /^\[IMPORTANT: You are running a scheduled cron job/i.test(text.trimStart());
+  return /^\[IMPORTANT: You are running (?:as )?a scheduled cron job/i.test(text.trimStart());
 }
 
 /**

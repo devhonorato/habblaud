@@ -215,6 +215,8 @@ class AgentView {
   private statusSince: HTMLElement;
   private followBtn: HTMLButtonElement;
   private termBtn: HTMLButtonElement;
+  /** Agente do Hermes: abre o painel (rotinas, conversas, cotas e o computador) no perfil dele. */
+  private hermesBtn: HTMLButtonElement;
   private termLabel: HTMLElement;
   /** Por que o terminal não abre: no celular não há hover para ler o title, então o toque mostra o motivo aqui. */
   private termWhy: HTMLElement;
@@ -320,6 +322,14 @@ class AgentView {
     );
 
     this.termWhy = h('p', { class: 'ui-term-cta__why', hidden: true, attrs: { role: 'status' } });
+    this.hermesBtn = h('button', {
+      class: 'ui-btn ui-hermes-cta',
+      type: 'button',
+      hidden: true,
+      text: tr('Rotinas, conversas e cotas'),
+      title: tr('Painel do Hermes deste perfil: rotinas do cron, resposta de cada rodada, cotas de IA, mercado e o computador'),
+      on: { click: () => this.id && this.ctx.openHermes?.(this.id, /:vigia:/.test(this.id) ? 'mercado' : 'equipe') },
+    });
 
     this.alertText = h('p', { class: 'ui-alert__text' });
     this.alertQuestions = h('div', { class: 'ui-ask', hidden: true });
@@ -413,6 +423,7 @@ class AgentView {
       statusRow,
       this.termBtn,
       this.termWhy,
+      this.hermesBtn,
       this.alert,
       this.perm.el,
       this.shellBox,
@@ -566,6 +577,7 @@ class AgentView {
     setAttr(this.followBtn, 'aria-pressed', String(following));
     this.followBtn.classList.toggle('is-on', following);
     this.renderTerminalButton(!!live);
+    setHidden(this.hermesBtn, !this.ctx.openHermes || providerOf(this.last) !== 'hermes');
 
     // Alerta.
     const waiting = a.status === 'waiting' && !!live;
@@ -720,7 +732,7 @@ class AgentView {
             ? tr('O agente já saiu do escritório.')
             : kind === 'ao vivo'
               ? tr('Ver a conversa desta sessão como no {0}, ao vivo{1} (T)', [
-                  provider === 'codex' ? 'Codex' : tr('terminal do Claude Code'),
+                  provider === 'codex' ? 'Codex' : provider === 'hermes' ? 'Hermes' : tr('terminal do Claude Code'),
                   this.pty.enabled && ptyControllable(this.last) ? tr('; "Assumir daqui" continua nela aqui') : '',
                 ])
               : kind === 'interativo'

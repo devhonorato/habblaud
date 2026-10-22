@@ -17,6 +17,7 @@ import { Overlay } from './render/overlay';
 import { Renderer } from './render/renderer';
 import { Sim, type VisitLight } from './sim/sim';
 import { NO_INTENT, VISITOR_ID, visitorInfo, type VisitorIntent } from './sim/visitor';
+import { propAt, type PropHit } from './props';
 import { SoundCues } from './sound-cues';
 
 export * from './api';
@@ -71,6 +72,15 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
   let selection: Selection = null;
   let hover: string | null = null;
   let mouse: { x: number; y: number } | null = null;
+  let propHandler: { wants(prop: PropHit): boolean; click(prop: PropHit, at: { x: number; y: number }): boolean } | null = null;
+  /** Móvel clicável sob um ponto da tela (só quando a UI quer aquele móvel), ou null. */
+  const propUnder = (sx: number, sy: number): PropHit | null => {
+    if (!propHandler || visitMode) return null;
+    const w = camera.screenToWorld(sx, sy);
+    const areas = [...sim.building.core, ...[...sim.rooms.values()].filter((r) => r.present && !r.ghost).map((r) => r.layout)];
+    const hit = propAt(areas, w.x, w.y);
+    return hit && propHandler.wants(hit) ? hit : null;
+  };
   let raf = 0;
   let lastTs = 0;
   let hiddenAt = 0;
@@ -222,7 +232,15 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
 
   const detachInput = attachInput(canvas, camera, {
     pick,
-    click: (hit, at) => (visitMode ? visitClick(hit, at) : setSelection(hit)),
+    click: (hit, at) => {
+      if (visitMode) return visitClick(hit, at);
+      // Um agente na frente do móvel ganha; numa sala vazia (ou fora dela), o móvel responde.
+      if (hit?.type !== 'agent') {
+        const prop = propUnder(at.x, at.y);
+        if (prop && propHandler?.click(prop, at)) return;
+      }
+      setSelection(hit);
+    },
     doubleClick: (hit) => {
       if (hit?.type === 'agent') {
         setSelection(hit);
@@ -313,6 +331,7 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       if (mouse) {
         const hit = pick(mouse.x, mouse.y);
         setHover(hit?.type === 'agent' ? hit.id : null);
+        if (hit?.type !== 'agent' && propHandler) canvas.style.cursor = propUnder(mouse.x, mouse.y) ? 'pointer' : 'grab';
       }
       // seleção de quem já foi embora
       if (selection?.type === 'agent' && !sim.chars.has(selection.id)) setSelection(null);
@@ -463,6 +482,9 @@ export function createWorld(canvas: HTMLCanvasElement, store: OfficeStore, o: Cr
       suspendedAt = 0;
       hiddenAt = 0;
       raf = requestAnimationFrame(loop);
+    },
+    setPropHandler: (handler) => {
+      propHandler = handler;
     },
     destroy: () => {
       cancelAnimationFrame(raf);

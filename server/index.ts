@@ -37,6 +37,7 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
+import { hermesLinks, hermesWeather } from './sources/hermes/config';
 import { HermesSource } from './sources/hermes/source';
 import { createBuildReader, readBuildInfo } from './build';
 import { UpdateChecker } from './updates/checker';
@@ -144,7 +145,9 @@ if (codex) agents.add(codex);
 const codexLive: CodexLive | undefined = codex;
 // Hermes Agent (sources/hermes/): só com HABBLAUD_HERMES_DIR, o diretório de dados dele (somente leitura). Cada perfil
 // vira uma sala com um agente permanente. As cópias dos bancos (quando não dá para lê-los no lugar) ficam no dataDir.
-const hermes = config.hermesDir ? new HermesSource({ accounts, office, dir: config.hermesDir, tmpDir: join(config.dataDir, 'hermes-cache') }) : undefined;
+const hermes = config.hermesDir
+  ? new HermesSource({ accounts, office, dir: config.hermesDir, tmpDir: join(config.dataDir, 'hermes-cache'), weather: hermesWeather(process.env), links: hermesLinks(process.env) })
+  : undefined;
 if (hermes) agents.add(hermes);
 late.office = office;
 late.agents = agents;
@@ -194,12 +197,14 @@ if (worldUplink && worldSocial) {
 // Terminal: só existe com bind local (ver terminalOffReason em config.ts).
 // Cada agente com o parser da ferramenta dele (o do Claude Code por padrão).
 const terminals = config.terminal
-  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id) })
+  ? new TerminalStreams({ office, transcriptPathOf: (id) => agents.transcriptPathOf(id), parserFor: (id) => agents.parserFor(id), feedFor: (id) => agents.feedFor(id) })
   : undefined;
 // Histórico do terminal (sessões recentes, abertas ou encerradas, de todas as ferramentas): mesma trava.
 const history = config.terminal
   ? new HistorySet([new SessionHistory({ accounts: () => accounts.entries(), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) })])
   : undefined;
+// Hermes: as sessões do state.db de cada perfil (a conversa sai pelo terminal do Hermes, sem arquivo).
+if (history && hermes) history.add(hermes.history());
 if (history && codex) history.add(new CodexHistory({ accounts: () => accounts.entriesOf('codex'), openAgentOf: (acc, sid) => openMainAgent(office.list(), acc, sid) }));
 // Entregas: o fim de cada pedido, lido dos transcripts do histórico (mesma trava do terminal). Os arquivos entregues
 // são lidos aqui (Node, ou pasta de conta montada no Docker) ou pelo auxiliar do host.
@@ -381,6 +386,7 @@ const api = createApiHandler({
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
   world: world ? createWorldRoutes(world, worldViewer, worldSocial) : undefined,
+  hermesPanel: hermes ? () => hermes.panel() : undefined,
 });
 
 const server = http.createServer();

@@ -167,6 +167,11 @@ export class TopBar implements UiComponent {
     this.panelGroup.insertBefore(btn, this.timelapseBtn);
   }
 
+  /** Cartão extra no fim da barra de uso (ex.: as cotas de IA do Hermes, ui/hermes.ts). */
+  addUsageCard(el: HTMLElement): void {
+    this.usage.addExtra(el);
+  }
+
   /** Acrescenta um botão de janela própria (ex.: Meu dia) ao começo do grupo de painéis. */
   addPanelButton(btn: HTMLElement): void {
     this.panelGroup.prepend(btn);

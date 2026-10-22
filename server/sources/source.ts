@@ -12,7 +12,7 @@
 // depois, SEMPRE em par (num `finally`, inclusive num boot assíncrono). O Office conta os boots: enquanto alguma
 // fonte boota não há avisos e o feed fica guardado para sair em ordem cronológica no fim do último boot (uma fonte
 // que nunca chamasse endBoot calaria os avisos de todas).
-import type { Provider, RecentSession, SourceInfo } from '../../shared/types';
+import type { Provider, RecentSession, SourceInfo, TerminalEntry } from '../../shared/types';
 import { errMsg, log } from '../log';
 import { HISTORY_LIMIT } from './history';
 import { createTerminalParser, type TerminalParser } from './terminal';
@@ -36,6 +36,28 @@ export interface AgentSource {
    * Ausente, ou undefined, = o do Claude Code (createTerminalParser).
    */
   terminalParser?(agentId: string): TerminalParser | undefined;
+  /**
+   * Conversa de um agente que não está num arquivo JSONL (ex.: o Hermes, no SQLite): um feed NOVO a cada chamada.
+   * Quando existe para o agente, o terminal usa ele no lugar do transcript.
+   */
+  terminalFeed?(agentId: string): TerminalFeed | undefined;
+}
+
+/** `init` de um TerminalFeed: a conversa recente e se havia mais antes dela. */
+export interface TerminalFeedInit {
+  entries: TerminalEntry[];
+  truncated: boolean;
+}
+
+/**
+ * Conversa de um agente montada por quem a guarda (banco, arquivos), sem passar por um parser de linhas JSONL: o
+ * terminal chama load() ao conectar e poll() a cada `intervalMs` (o que é novo; nunca repete uma entrada).
+ */
+export interface TerminalFeed {
+  readonly intervalMs?: number;
+  /** As últimas `limit` entradas (no máximo). */
+  load(limit: number): TerminalFeedInit;
+  poll(): TerminalEntry[];
 }
 
 /** Todas as fontes de agentes ligadas, vistas como uma só. */
@@ -110,6 +132,15 @@ export class SourceSet {
     const owner = this.list.find((s) => s.transcriptPathOf(agentId) !== undefined);
     return owner?.terminalParser?.(agentId) ?? createTerminalParser();
   }
+
+  /** Feed NOVO da conversa de um agente que não tem transcript em arquivo (a primeira fonte que tiver um). */
+  feedFor(agentId: string): TerminalFeed | undefined {
+    for (const s of this.list) {
+      const feed = s.terminalFeed?.(agentId);
+      if (feed) return feed;
+    }
+    return undefined;
+  }
 }
 
 // ------------------------------------------------------------------ histórico do terminal
@@ -121,8 +152,13 @@ export interface HistorySession {
   createParser: () => TerminalParser;
 }
 
+/** Sessão do histórico guardada fora de um arquivo JSONL (ex.: o state.db do Hermes): o terminal lê pelo feed. */
+export interface FeedHistorySession {
+  createFeed: () => TerminalFeed;
+}
+
 /** Resultado de resolve(): a sessão ou o erro HTTP. */
-export type HistoryResolveResult = HistorySession | { status: 400 | 404; error: string };
+export type HistoryResolveResult = HistorySession | FeedHistorySession | { status: 400 | 404; error: string };
 
 /** O que as rotas /api/sessions/* precisam: um provedor sozinho ou o HistorySet. */
 export interface SessionLookup {

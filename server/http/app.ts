@@ -22,6 +22,7 @@ import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
 import { HOST_WAIT_MS } from '../host-wait';
+import type { HermesPanel } from '../../shared/hermes';
 
 export interface ApiDeps {
   office: Office;
@@ -94,6 +95,11 @@ export interface ApiDeps {
    * local com Host local: pela porta do celular, nem com login (403 `local_only`).
    */
   world?: (req: IncomingMessage, res: ServerResponse, url: URL) => void;
+  /**
+   * Painel do Hermes (GET /api/hermes/painel; sources/hermes/source.ts): computador, cotas de IA, rotinas, saídas e
+   * monitores. Ausente = fonte do Hermes desligada (404). O texto das saídas das rotinas só vai com a trava do terminal.
+   */
+  hermesPanel?: () => HermesPanel;
 }
 
 /** GET /api/agents/:id/terminal (ids nunca contêm '/'). */
@@ -401,6 +407,21 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           world: !!deps.world && !!deps.terminal && !remote && isLoopbackHost(req.headers.host),
         };
         sendJson(res, 200, access);
+      }
+      return true;
+    }
+    if (path === '/api/hermes/painel') {
+      if (!isRead) methodNotAllowed(res, 'GET');
+      else if (!deps.hermesPanel) sendJson(res, 404, { error: tr('fonte do Hermes desligada') });
+      else {
+        try {
+          const panel = deps.hermesPanel();
+          // Sem a trava do terminal (ex.: celular sem "terminal" liberado), as respostas das rotinas ficam de fora.
+          const open = !!terminals && trusted(req, 'terminal');
+          sendJson(res, 200, open ? panel : { ...panel, profiles: panel.profiles.map((p) => ({ ...p, outputs: p.outputs.map(({ text: _t, ...o }) => o) })) });
+        } catch (err) {
+          fail(res, err);
+        }
       }
       return true;
     }

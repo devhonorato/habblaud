@@ -16,18 +16,31 @@
 // as últimas BOOT_MESSAGES de cada perfil entram como histórico (sem feed ao vivo). Sessões filhas
 // (`parent_session_id`, ex.: delegate_task) viram subagentes enquanto não terminam.
 //
-// Terminal e histórico de sessões: não há (transcriptPathOf devolve undefined). O terminal do Habblaud segue um
-// arquivo JSONL; a conversa do Hermes está no SQLite. Ver README.md desta pasta.
+// Vigia: cada rotina com monitor (monitor_script / monitor_url, ex.: vigia-mercado) ganha um segundo agente
+// permanente na sala, o "Vigia". Cada checagem do monitor (execução curta no executions.db) vira uma atividade só no
+// histórico dele; quando a checagem acorda o principal (sessão nova do cron daquela rotina), o feed mostra "Chamou
+// <principal>: <motivo>" (a primeira linha nova da diferença). Uma leitura nova do monitor do Kairo pode acender a
+// sala: venda com lucro = festa, pausa por risco = alarme (cron.ts, marketEffect).
+//
+// Terminal e histórico de sessões: a conversa está no SQLite, não num JSONL (transcriptPathOf devolve undefined).
+// terminalFeed() monta o terminal pelo banco e pelas saídas do cron (terminal.ts); history() lista as sessões
+// recentes de todos os perfis para o histórico do terminal. panel() monta o painel (GET /api/hermes/painel). Ver
+// README.md desta pasta.
 import { join } from 'node:path';
 import { maskSecrets, truncate } from '../../../shared/activity';
-import type { AgentStats, AgentStatus, SourceInfo } from '../../../shared/types';
+import type { HermesMarket, HermesModelUsage, HermesPanel, HermesProfilePanel } from '../../../shared/hermes';
+import type { AgentStats, AgentStatus, RecentSession, SourceInfo } from '../../../shared/types';
 import type { AccountEntry, AccountsService } from '../../accounts/service';
 import { errMsg, log } from '../../log';
 import type { Office, TranscriptSummary } from '../../model/office';
-import type { AgentSource } from '../source';
+import { HISTORY_DAYS } from '../history';
+import type { AgentSource, HistoryProvider, HistoryResolveResult, TerminalFeed } from '../source';
+import { diffOf, marketEffect, parseMarket, wakeReason } from './cron';
 import { describeMessage, parseToolCalls, type HermesMessage } from './describe';
+import { OutputIndex, readAgentLogs, readUsageAudit, SystemReader, utcDay, WeatherService, type SystemReaderOptions, type WeatherOptions } from './panel';
 import { discoverProfiles, jobIdOfSession, parseGateway, parseHeartbeat, parseJobs, parseProfileDescription, SmallFile, type CronJob, type HermesProfile } from './profiles';
 import { loadSqlite, ReadOnlyDb, type ReadMode, type SqliteDatabase, type SqliteModule } from './sqlite';
+import { MainFeed, readMonitorLines, SessionFeed, VigiaFeed } from './terminal';
 import { tr } from '../../../shared/i18n';
 
 /** Mensagem nos últimos 60 s (turno ainda aberto) = trabalhando. */
@@ -46,6 +59,13 @@ export const BOOT_MESSAGES = 80;
 const BATCH = 400;
 /** Releitura da lista de perfis. */
 const RESCAN_MS = 10_000;
+/** Execuções do monitor lidas por ciclo (as mais recentes): viram as checagens do Vigia. */
+const VIGIA_EXECS = 30;
+/** Painel do Hermes: refeito no máximo a cada 5 s. */
+const PANEL_TTL_MS = 5_000;
+/** Duração da festa (venda com lucro) e do alarme (pausa por risco) na sala. */
+const PARTY_MS = 15_000;
+const ALARM_MS = 10 * 60_000;
 const MAIN_ROLE = tr('Agente Hermes');
 const SUB_ROLE = tr('Subagente (Hermes)');
 /** Conta única da fonte (uma pasta de dados do Hermes). */
@@ -97,6 +117,12 @@ export interface HermesSourceOptions {
   sqlite?: SqliteModule;
   /** Força o modo de leitura dos bancos (testes). */
   readMode?: ReadMode;
+  /** Tempo lá fora no painel (open-meteo); ausente ou false = desligado. */
+  weather?: WeatherOptions | false;
+  /** Links do painel (OmniRoute, Beszel). */
+  links?: HermesPanel['links'];
+  /** Leitura do computador (testes trocam /proc, /sys e o os). */
+  system?: Partial<SystemReaderOptions>;
 }
 
 /** Uma linha de `sessions` (só o que usamos). */
@@ -124,6 +150,30 @@ interface ExecRow {
   status: string;
   claimed_at?: string;
   started_at?: string | null;
+}
+
+/** Execução terminada do cron (as checagens do monitor). */
+interface DoneExecRow {
+  id: string;
+  job_id: string;
+  status: string;
+  started_at?: string | null;
+  claimed_at?: string;
+  finished_at?: string | null;
+}
+
+/** O Vigia de uma rotina com monitor. */
+interface VigiaTracker {
+  key: string;
+  job: CronJob;
+  inOffice: boolean;
+  status: AgentStatus;
+  /** Execuções já vistas (por id). */
+  seen: Set<string>;
+  /** Assinatura da última leitura do monitor vista e o mercado dela. */
+  readSig: string;
+  market?: HermesMarket;
+  lastAt?: number;
 }
 
 interface SubTracker {
@@ -165,6 +215,13 @@ interface ProfileTracker {
   subs: Map<string, SubTracker>;
   /** last_run_at por rotina (para avisar uma rotina que falhou). */
   jobRuns: Map<string, number | undefined>;
+  /** Vigias (um por rotina com monitor), pelo id da rotina. */
+  vigias: Map<string, VigiaTracker>;
+  /** Execuções terminadas das rotinas com monitor (as mais recentes). */
+  doneExecs: DoneExecRow[];
+  execCols?: Set<string>;
+  /** Uso por modelo hoje (session_model_usage), refeito quando o banco muda. */
+  usage?: { sig: string; day: string; rows: HermesModelUsage[] };
   status: AgentStatus;
   inOffice: boolean;
   error?: string;
@@ -192,6 +249,10 @@ export class HermesSource implements AgentSource {
   private lastScan = -Infinity;
   private stopped = false;
   private readonly now: () => number;
+  private readonly system: SystemReader;
+  private readonly outputs = new OutputIndex();
+  private readonly weather?: WeatherService;
+  private panelCache?: { at: number; value: HermesPanel };
 
   constructor(private readonly opts: HermesSourceOptions) {
     this.now = opts.now ?? Date.now;
@@ -199,6 +260,8 @@ export class HermesSource implements AgentSource {
       { dir: opts.dir, detected: { id: ACCOUNT_ID, configDir: opts.dir, short: 'H', name: 'Hermes', color: ACCOUNT_COLOR } },
     ]);
     this.accountId = this.entries[0]?.id ?? ACCOUNT_ID;
+    this.system = new SystemReader({ dir: opts.dir, ...opts.system });
+    if (opts.weather) this.weather = new WeatherService({ now: this.now, ...opts.weather });
   }
 
   /** Perfis encontrados (salas). */
@@ -259,9 +322,31 @@ export class HermesSource implements AgentSource {
     return [info];
   }
 
-  /** A conversa do Hermes está no SQLite, não num arquivo JSONL: sem terminal (ver README.md). */
+  /** A conversa do Hermes está no SQLite, não num arquivo JSONL: o terminal vem de terminalFeed (ver README.md). */
   transcriptPathOf(): string | undefined {
     return undefined;
+  }
+
+  /** Terminal de um agente do Hermes: o principal (banco + saídas do cron) ou um Vigia (checagens + leitura). */
+  terminalFeed(agentId: string): TerminalFeed | undefined {
+    for (const t of this.trackers.values()) {
+      const jobs = () => t.jobs.read() ?? [];
+      if (agentId === t.key) return new MainFeed({ state: t.state, dir: t.profile.dir, jobs });
+      for (const v of t.vigias.values()) {
+        if (v.key === agentId) return new VigiaFeed(t.profile.dir, v.job, () => this.opts.office.get(t.key)?.name ?? t.profile.name);
+      }
+    }
+    return undefined;
+  }
+
+  /** Histórico do terminal: as sessões recentes de todos os perfis (a conversa sai pelo SessionFeed). */
+  history(): HistoryProvider {
+    return {
+      provider: 'hermes',
+      hasAccount: (account) => account === this.accountId,
+      list: async () => this.recentSessions(),
+      resolve: (account, sessionId) => this.resolveSession(account, sessionId),
+    };
   }
 
   // ---------------------------------------------------------------- polling
@@ -303,6 +388,7 @@ export class HermesSource implements AgentSource {
     for (const [key, t] of [...this.trackers]) {
       if (seen.has(key)) continue;
       if (t.inOffice) this.opts.office.closeMain(t.key);
+      for (const v of t.vigias.values()) if (v.inOffice) this.opts.office.closeMain(v.key);
       t.state?.close();
       t.execs?.close();
       this.trackers.delete(key);
@@ -330,6 +416,8 @@ export class HermesSource implements AgentSource {
       subLast: new Map(),
       subs: new Map(),
       jobRuns: new Map(),
+      vigias: new Map(),
+      doneExecs: [],
       status: 'idle',
       inOffice: false,
     };
@@ -346,9 +434,22 @@ export class HermesSource implements AgentSource {
     if (t.execs?.exists()) {
       const sig = t.execs.signature();
       if (sig !== t.execSig) {
-        const rows = t.execs.read((db) => db.prepare("SELECT job_id, status, claimed_at, started_at FROM executions WHERE status IN ('claimed', 'running') ORDER BY claimed_at DESC LIMIT 8").all() as unknown as ExecRow[]);
+        const monitorJobs = jobs.filter((j) => j.monitor).map((j) => j.id);
+        const rows = t.execs.read((db) => {
+          const running = db.prepare("SELECT job_id, status, claimed_at, started_at FROM executions WHERE status IN ('claimed', 'running') ORDER BY claimed_at DESC LIMIT 8").all() as unknown as ExecRow[];
+          let done: DoneExecRow[] = [];
+          if (monitorJobs.length) {
+            t.execCols ??= new Set(this.columnsOf(db, 'executions'));
+            const fin = t.execCols.has('finished_at') ? 'finished_at' : 'NULL AS finished_at';
+            done = db
+              .prepare(`SELECT id, job_id, status, claimed_at, started_at, ${fin} FROM executions WHERE job_id IN (${monitorJobs.map(() => '?').join(', ')}) AND status IN ('completed', 'failed') ORDER BY claimed_at DESC LIMIT ${VIGIA_EXECS}`)
+              .all(...monitorJobs) as unknown as DoneExecRow[];
+          }
+          return { running, done };
+        });
         if (rows) {
-          t.execRows = rows;
+          t.execRows = rows.running;
+          t.doneExecs = rows.done;
           t.execSig = sig;
         } else if (t.execs.error) errors.push(`executions.db: ${t.execs.error}`);
       }
@@ -367,6 +468,7 @@ export class HermesSource implements AgentSource {
     t.error = errors[0];
 
     this.checkJobs(t, jobs, boot);
+    this.syncVigias(t, jobs, now, boot);
     this.syncSubs(t, now);
     const status = this.statusOf(t, now);
     if (status !== t.status) {
@@ -469,6 +571,45 @@ export class HermesSource implements AgentSource {
       const { key, ...desc } = a;
       office.addActivity(target, { id: `${t.key}#${m.id}:${key}`, at, ...desc }, true, { feed: !boot });
     }
+    // O pedido de uma rotina com monitor = o Vigia acordou o principal (a diferença do monitor vem no pedido).
+    const vigia = !isSub && m.role === 'user' && jobId ? this.vigiaFor(t, jobId, jobs, now) : undefined;
+    if (vigia) this.vigiaWoke(t, vigia, m, at, boot);
+  }
+
+  /** O Vigia de uma rotina com monitor (criado aqui se a mensagem chegou antes do primeiro syncVigias). */
+  private vigiaFor(t: ProfileTracker, jobId: string, jobs: readonly CronJob[], now: number): VigiaTracker | undefined {
+    const known = t.vigias.get(jobId);
+    if (known) return known;
+    const job = jobs.find((j) => j.id === jobId && j.monitor);
+    if (!job || !t.inOffice) return undefined;
+    const v: VigiaTracker = { key: `${t.key}:vigia:${job.id}`, job, inOffice: false, status: 'idle', seen: new Set(), readSig: '' };
+    t.vigias.set(job.id, v);
+    this.enterVigia(t, v, now);
+    return v;
+  }
+
+  /** "Chamou <principal>: <motivo>" no Vigia (no feed, fora do boot). */
+  private vigiaWoke(t: ProfileTracker, v: VigiaTracker, m: HermesMessage, at: number, boot: boolean): void {
+    const office = this.opts.office;
+    if (!v.inOffice) return;
+    const main = office.get(t.key)?.name ?? t.profile.name;
+    const diff = typeof m.content === 'string' ? diffOf(m.content) : undefined;
+    const reason = wakeReason(diff, 44);
+    office.addActivity(
+      v.key,
+      {
+        id: `${v.key}#wake:${m.id}`,
+        at,
+        kind: 'communicate',
+        icon: '📣',
+        text: truncate(reason ? tr('Chamou {0}: {1}', [main, reason]) : tr('Chamou {0}: o monitor mudou', [main]), 46),
+        ...(diff ? { detail: truncate(maskSecrets(diff.slice(0, 1_200)), 300) } : {}),
+        tool: 'cron',
+      },
+      true,
+      { feed: !boot },
+    );
+    v.lastAt = Math.max(v.lastAt ?? 0, at);
   }
 
   /** Rotina que terminou com erro desde a última leitura: atividade de erro (fora do boot). */
@@ -485,6 +626,121 @@ export class HermesSource implements AgentSource {
         true,
       );
     }
+  }
+
+  private enterVigia(t: ProfileTracker, v: VigiaTracker, now: number): void {
+    const office = this.opts.office;
+    office.addMain({
+      id: v.key,
+      provider: 'hermes',
+      account: this.accountId,
+      sessionId: `hermes-${t.profile.name}-vigia-${v.job.id}`,
+      cwd: t.profile.name === 'default' && t.profile.dir === this.opts.dir ? join(this.opts.dir, 'profiles', 'default') : t.profile.dir,
+      role: /mercado|market|kairo/i.test(v.job.name) ? tr('Vigia do mercado') : tr('Vigia da rotina {0}', [v.job.name]),
+      startedAt: now,
+      status: v.status,
+      name: tr('Vigia'),
+    });
+    v.inOffice = office.has(v.key);
+  }
+
+  /**
+   * Um Vigia por rotina com monitor: entra e sai com a rotina, fica 'idle' (ou 'offline' com o gateway parado) e
+   * ganha uma atividade (só no histórico) por checagem e por leitura nova do monitor.
+   */
+  private syncVigias(t: ProfileTracker, jobs: readonly CronJob[], now: number, boot: boolean): void {
+    const office = this.opts.office;
+    const want = new Map(jobs.filter((j) => j.monitor && t.inOffice).map((j) => [j.id, j] as const));
+    for (const [id, v] of [...t.vigias]) {
+      if (want.has(id)) continue;
+      if (v.inOffice) office.closeMain(v.key);
+      t.vigias.delete(id);
+    }
+    const offline = this.gatewayOf(t, now) === 'stopped';
+    for (const job of want.values()) {
+      let v = t.vigias.get(job.id);
+      if (!v) {
+        v = { key: `${t.key}:vigia:${job.id}`, job, inOffice: false, status: 'idle', seen: new Set(), readSig: '' };
+        t.vigias.set(job.id, v);
+      }
+      v.job = job;
+      if (v.inOffice && !office.has(v.key)) v.inOffice = false;
+      const status: AgentStatus = offline ? 'offline' : 'idle';
+      if (!v.inOffice) {
+        v.status = status;
+        this.enterVigia(t, v, now);
+        if (!v.inOffice) continue;
+      } else if (status !== v.status) {
+        v.status = status;
+        office.setStatus(v.key, status);
+      }
+      this.vigiaChecks(t, v);
+      this.vigiaReading(t, v, boot);
+      const summary: TranscriptSummary = {
+        tasks: [],
+        stats: { toolCalls: 0, tokensIn: 0, tokensOut: 0, subagents: 0 },
+        title: tr('Rotina: {0}', [job.schedule ? `${job.name} (${job.schedule})` : job.name]).slice(0, 120),
+      };
+      if (v.lastAt) summary.lastAt = v.lastAt;
+      office.applyTranscript(v.key, summary);
+    }
+  }
+
+  /** Cada execução terminada da rotina: uma checagem no histórico do Vigia (as que acordaram o principal vêm do pedido). */
+  private vigiaChecks(t: ProfileTracker, v: VigiaTracker): void {
+    const rows = t.doneExecs.filter((r) => r.job_id === v.job.id && !v.seen.has(r.id)).reverse();
+    for (const r of rows) {
+      v.seen.add(r.id);
+      const start = isoMs(r.started_at ?? undefined) ?? isoMs(r.claimed_at);
+      const end = isoMs(r.finished_at ?? undefined);
+      if (start === undefined) continue;
+      const ms = end !== undefined ? Math.max(0, end - start) : undefined;
+      const failed = r.status === 'failed';
+      // Longa = o modelo rodou (o pedido já virou "Chamou ..."); aqui só o registro da checagem.
+      const woke = !failed && ms !== undefined && ms >= EXEC_SETTLE_MS;
+      const text = failed ? tr('Checagem falhou') : woke ? tr('Checagem: mudou, chamou o agente') : tr('Checagem: sem mudança');
+      this.opts.office.addActivity(
+        v.key,
+        {
+          id: `${v.key}#exec:${r.id}`,
+          at: end ?? start,
+          kind: failed ? 'error' : 'search',
+          icon: failed ? '⚠️' : woke ? '🔔' : '👀',
+          text,
+          detail: tr('Rotina {0}{1}', [v.job.name, ms !== undefined ? ` · ${(ms / 1000).toFixed(1)} s` : '']),
+          tool: 'cron',
+          ...(failed ? { error: true } : {}),
+        },
+        true,
+        // Só no histórico do Vigia: nunca no feed (nem no do boot).
+        { feed: false, filler: true },
+      );
+      v.lastAt = Math.max(v.lastAt ?? 0, end ?? start);
+    }
+    if (v.seen.size > 500) v.seen = new Set([...v.seen].slice(-200));
+  }
+
+  /** Leitura nova do monitor: atividade no histórico do Vigia e, no Kairo, festa ou alarme na sala. */
+  private vigiaReading(t: ProfileTracker, v: VigiaTracker, boot: boolean): void {
+    const r = readMonitorLines(join(t.profile.dir, 'cron', 'output', v.job.id, 'monitor_last_output.txt'));
+    if (!r) return;
+    const sig = `${r.at}:${r.lines.join('|').length}`;
+    if (sig === v.readSig) return;
+    const first = !v.readSig;
+    v.readSig = sig;
+    const prev = v.market;
+    v.market = parseMarket(r.lines);
+    // A primeira leitura (no boot ou ao entrar) não é novidade: só guarda o mercado para comparar.
+    if (first) return;
+    this.opts.office.addActivity(
+      v.key,
+      { id: `${v.key}#read:${Math.round(r.at)}`, at: r.at, kind: 'read', icon: '📡', text: tr('Leitura nova do monitor'), detail: truncate(r.lines.slice(0, 8).join(' · '), 300), tool: 'cron' },
+      true,
+      { feed: false, filler: true },
+    );
+    if (boot) return;
+    const fx = marketEffect(prev, v.market);
+    if (fx) this.opts.office.roomEffect(t.key, fx.kind, fx.text, fx.kind === 'party' ? PARTY_MS : ALARM_MS, fx.kind === 'party' ? `🎉 ${fx.text}` : `🚨 ${fx.text}`);
   }
 
   /** Sessões filhas abertas = subagentes do principal; terminadas (ou quietas) = entregaram. */
@@ -579,5 +835,163 @@ export class HermesSource implements AgentSource {
     if (cur?.model) summary.model = cur.model;
     if (t.last) summary.lastAt = t.last.at;
     this.opts.office.applyTranscript(t.key, summary);
+  }
+
+  // ---------------------------------------------------------------- histórico do terminal
+
+  private recentSessions(): RecentSession[] {
+    const now = this.now();
+    const since = (now - HISTORY_DAYS * 86_400_000) / 1000;
+    const out: RecentSession[] = [];
+    for (const t of this.trackers.values()) {
+      const rows = t.state?.read((db) => {
+        const have = new Set(this.columnsOf(db, 'sessions'));
+        const cols = ['id', 'source', 'title', 'parent_session_id', 'started_at', 'ended_at', 'last_activity_at', 'message_count'].filter((c) => have.has(c));
+        return db.prepare(`SELECT ${cols.join(', ')} FROM sessions WHERE started_at >= ? ORDER BY started_at DESC LIMIT 60`).all(since) as unknown as Array<SessionRow & { message_count?: number }>;
+      });
+      const jobs = t.jobs.read() ?? [];
+      for (const s of rows ?? []) {
+        if (s.parent_session_id) continue;
+        const firstAt = s.started_at ? Math.round(s.started_at * 1000) : undefined;
+        const lastSec = num(s.ended_at) ?? num(s.last_activity_at) ?? num(s.started_at);
+        const lastAt = lastSec ? Math.round(lastSec * 1000) : now;
+        const jobId = jobIdOfSession(s.id);
+        const job = jobId ? (jobs.find((j) => j.id === jobId)?.name ?? jobId) : undefined;
+        const open = !s.ended_at && now - lastAt < WORKING_RECENT_MS * 10;
+        const r: RecentSession = {
+          account: this.accountId,
+          provider: 'hermes',
+          sessionId: `${t.profile.name}~${s.id}`,
+          project: t.profile.dir,
+          projectDir: t.profile.name,
+          lastAt,
+          size: num(s.message_count) ?? 0,
+          open,
+        };
+        const title = job ? tr('Rotina: {0}', [job]) : s.title;
+        if (title) r.title = title.slice(0, 160);
+        if (firstAt) r.firstAt = firstAt;
+        if (open && t.inOffice) r.agentId = t.key;
+        out.push(r);
+      }
+    }
+    return out.sort((a, b) => b.lastAt - a.lastAt);
+  }
+
+  private resolveSession(account: string, sessionId: string): HistoryResolveResult {
+    if (account !== this.accountId) return { status: 404, error: tr('conta desconhecida') };
+    const m = /^([A-Za-z0-9][A-Za-z0-9._-]{0,63})~([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})$/.exec(sessionId);
+    if (!m) return { status: 400, error: tr('id de sessão inválido') };
+    const t = [...this.trackers.values()].find((x) => x.profile.name === m[1]);
+    const db = t?.state;
+    if (!t || !db) return { status: 404, error: tr('sessão não encontrada') };
+    const found = db.read((d) => !!d.prepare('SELECT 1 AS ok FROM sessions WHERE id = ?').get(m[2]));
+    if (!found) return { status: 404, error: tr('sessão não encontrada') };
+    return { createFeed: () => new SessionFeed(db, m[2], () => t.jobs.read() ?? []) };
+  }
+
+  // ---------------------------------------------------------------- painel
+
+  /** Painel do Hermes (GET /api/hermes/painel), refeito no máximo a cada PANEL_TTL_MS. */
+  panel(): HermesPanel {
+    const now = this.now();
+    if (this.panelCache && now - this.panelCache.at < PANEL_TTL_MS) return this.panelCache.value;
+    const day = utcDay(now);
+    const trackers = [...this.trackers.values()];
+    const logs = readAgentLogs(
+      this.opts.dir,
+      trackers.map((t) => t.profile.name),
+      day,
+    );
+    const limits = [...logs.limits];
+    const usage: HermesModelUsage[] = [];
+    let tokensToday = 0;
+    let runsToday = 0;
+    const profiles: HermesProfilePanel[] = [];
+    for (const t of trackers) {
+      const jobs = t.jobs.read() ?? [];
+      const audit = readUsageAudit(t.profile.dir, t.profile.name, day);
+      tokensToday += audit.tokens;
+      runsToday += audit.runs;
+      limits.push(...audit.errors.filter((e) => /429|rate|limit|quota|exhaust/i.test(e.text)));
+      usage.push(...this.modelUsage(t, day));
+      const running = new Set(t.execRows.map((r) => r.job_id));
+      const p: HermesProfilePanel = {
+        name: t.profile.name,
+        agentId: t.key,
+        tokensToday: audit.tokens,
+        runsToday: audit.runs,
+        jobs: jobs.map((j) => {
+          const v = t.vigias.get(j.id);
+          return {
+            id: j.id,
+            name: j.name,
+            enabled: j.enabled,
+            running: running.has(j.id),
+            monitor: !!j.monitor,
+            ...(j.schedule ? { schedule: j.schedule } : {}),
+            ...(j.lastRunAt ? { lastRunAt: j.lastRunAt } : {}),
+            ...(j.nextRunAt ? { nextRunAt: j.nextRunAt } : {}),
+            ...(j.lastStatus ? { lastStatus: j.lastStatus } : {}),
+            ...(j.lastError ? { lastError: maskSecrets(j.lastError.slice(0, 1_000)) } : {}),
+            ...(v?.inOffice ? { vigiaId: v.key } : {}),
+          };
+        }),
+        outputs: this.outputs.list(t.profile.dir, jobs),
+        monitors: [],
+      };
+      const description = t.yaml.read();
+      if (description) p.description = description;
+      for (const j of jobs.filter((x) => x.monitor)) {
+        const r = readMonitorLines(join(t.profile.dir, 'cron', 'output', j.id, 'monitor_last_output.txt'));
+        if (!r) continue;
+        const v = t.vigias.get(j.id);
+        const market = parseMarket(r.lines);
+        p.monitors.push({ jobId: j.id, jobName: j.name, at: r.at, lines: r.lines, ...(v?.inOffice ? { agentId: v.key } : {}), ...(market ? { market } : {}) });
+      }
+      profiles.push(p);
+    }
+    limits.sort((a, b) => b.at - a.at);
+    const value: HermesPanel = {
+      generatedAt: now,
+      system: this.system.read(),
+      quotas: { day, calls: logs.calls, usage, limits: limits.slice(0, 40), tokensToday, runsToday, logFound: logs.found },
+      profiles,
+    };
+    const weather = this.weather?.current();
+    if (weather) value.weather = weather;
+    if (this.opts.links && (this.opts.links.omniroute || this.opts.links.beszel)) value.links = { ...this.opts.links };
+    this.panelCache = { at: now, value };
+    return value;
+  }
+
+  /** Uso por modelo e provedor hoje (session_model_usage), relido só quando o banco muda. */
+  private modelUsage(t: ProfileTracker, day: string): HermesModelUsage[] {
+    if (!t.state?.exists()) return [];
+    const sig = t.state.signature();
+    if (t.usage && t.usage.sig === sig && t.usage.day === day) return t.usage.rows;
+    const since = Date.parse(`${day}T00:00:00Z`) / 1000;
+    const rows = t.state.read((db) => {
+      const have = new Set(this.columnsOf(db, 'session_model_usage'));
+      if (!have.has('model')) return [];
+      const col = (c: string, alt = '0') => (have.has(c) ? c : alt);
+      const when = have.has('last_seen') ? 'coalesce(last_seen, first_seen, 0)' : '0';
+      return db
+        .prepare(
+          `SELECT model, ${col('billing_provider', "''")} AS provider, ${col('task', "''")} AS task, sum(${col('api_call_count')}) AS calls, sum(${col('input_tokens')} + ${col('cache_read_tokens')} + ${col('cache_write_tokens')}) AS tin, sum(${col('output_tokens')}) AS tout FROM session_model_usage WHERE ${when} >= ? GROUP BY model, provider, task ORDER BY calls DESC LIMIT 40`,
+        )
+        .all(since) as Array<{ model: string; provider?: string; task?: string; calls?: unknown; tin?: unknown; tout?: unknown }>;
+    });
+    const list: HermesModelUsage[] = (rows ?? []).map((r) => ({
+      profile: t.profile.name,
+      model: String(r.model),
+      provider: r.provider ? String(r.provider) : '?',
+      ...(r.task ? { task: String(r.task) } : {}),
+      calls: num(r.calls) ?? 0,
+      tokensIn: num(r.tin) ?? 0,
+      tokensOut: num(r.tout) ?? 0,
+    }));
+    t.usage = { sig, day, rows: list };
+    return list;
   }
 }

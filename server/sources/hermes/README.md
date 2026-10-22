@@ -9,6 +9,9 @@ rotina do cron e outra.
 | Variável | O quê |
 | --- | --- |
 | `HABBLAUD_HERMES_DIR` | Diretório de dados do Hermes (no container dele, `/opt/data`; no host, a pasta montada lá). Sem ela, a fonte fica desligada. |
+| `HABBLAUD_OMNIROUTE_URL` | (Opcional) Link "Abrir o OmniRoute" na aba Cotas de IA. |
+| `HABBLAUD_BESZEL_URL` | (Opcional) Link "Abrir o Beszel" na aba Servidor. |
+| `HABBLAUD_CLIMA` | `0` desliga o tempo lá fora (open-meteo, sem chave, no máximo a cada 10 min). Lugar: `HABBLAUD_CLIMA_LAT`, `HABBLAUD_CLIMA_LON`, `HABBLAUD_CLIMA_LOCAL` (padrão: São Paulo). |
 
 No Docker, monte o diretório **só para leitura** (ex.: `-v /srv/ai/apps/hermes/data:/hermes:ro` e
 `HABBLAUD_HERMES_DIR=/hermes`). Sem nenhuma conta do Claude Code nem do Codex o servidor sobe normalmente, só com o
@@ -25,7 +28,14 @@ Limitações).
 | `cron/jobs.json` | Nome das rotinas; rotina que falhou (`last_status` + `last_error`) |
 | `gateway_state.json` | Gateway rodando ou não (`gateway_state`) |
 | `cron/ticker_heartbeat` | Sem o `gateway_state.json`: batimento do agendador (parado há mais de 10 min = gateway parado) |
-| `profile.yaml` | `description:` (título do agente quando não há sessão) |
+| `profile.yaml` | `description:` (título do agente quando não há sessão; aba Equipe) |
+| `cron/executions.db` → execuções terminadas das rotinas com monitor | Checagens do Vigia (curtas = sem mudança) |
+| `cron/output/<job>/*.md` | Terminal (rodadas que já saíram da janela do banco), terminal do Vigia, aba Conversas |
+| `cron/output/<job>/monitor_last_output.txt` | Última leitura do monitor: terminal do Vigia, aba Mercado, efeitos da sala |
+| `cron/usage_audit.jsonl` (últimos 4 MB) | Tokens e rodadas do dia (UTC) |
+| `state.db` → `session_model_usage` | Chamadas e tokens do dia por modelo, provedor e tarefa |
+| `logs/agent.log` (raiz e `profiles/<perfil>/logs/`, últimos 3 MB) | Chamadas por modelo/provedor (`API call #N: model=… provider=…`) e limites (`RateLimitError`, `429`, cota) do dia |
+| `/proc/loadavg`, `/proc/meminfo`, `/proc/uptime`, `/sys/class/thermal/*/temp`, `statfs(HABBLAUD_HERMES_DIR)` | O computador (aba Servidor) |
 
 **SQLite.** Lido com o `node:sqlite` do próprio Node (22.13+ sem flag; o Dockerfile usa o 24): nada de dependência
 nativa. O aviso "ExperimentalWarning" do módulo é engolido ao carregar. Cada leitura abre, consulta e fecha, e só
@@ -82,14 +92,70 @@ Sessões filhas (`parent_session_id`, ex.: `delegate_task`) viram **subagentes**
 terminar ou depois de 5 min sem mensagem). A amostra usada no desenvolvimento não tinha nenhuma; a tabela
 `async_delegations` ainda não é lida.
 
+## Vigia
+
+Cada rotina com `monitor_script` ou `monitor_url` no `jobs.json` (ex.: `vigia-mercado`) ganha um segundo agente
+**permanente** na sala do perfil, chamado "Vigia" (papel "Vigia do mercado" quando o nome da rotina fala de mercado ou
+Kairo; senão "Vigia da rotina <nome>"; se já houver outro "Vigia", vira "Vigia (<sala>)"). Ele fica ocioso (ou sai com
+o gateway parado) e:
+
+| Quando | O quê |
+| --- | --- |
+| Execução terminada da rotina no `executions.db` | "Checagem: sem mudança" (ou "mudou, chamou o agente"/"falhou"), **só no histórico dele** |
+| Sessão nova do cron daquela rotina (o pedido traz a diferença do monitor) | "Chamou <principal>: <motivo>" **no feed**; motivo = a linha nova mais importante da diferença ("evento VENDA", "CRCLBUSDT 1h sem posição (+2)") |
+| `monitor_last_output.txt` mudou | "Leitura nova do monitor", só no histórico; no Kairo, festa na sala com uma venda com lucro (posição positiva que fechou) e alarme com o mandato desligado ou um evento de pausa/risco/perda |
+
+O terminal do Vigia mostra cada checagem (com a diferença, quando chamou o principal) e, por último, a leitura
+completa do monitor (radar, instâncias, posições, eventos, avisos).
+
+## Terminal e histórico
+
+O terminal do Habblaud segue arquivos JSONL; a conversa do Hermes está no SQLite. A fonte implementa
+`AgentSource.terminalFeed` (`server/sources/source.ts`), um provedor de conversa sem arquivo que o terminal usa no lugar
+do transcript (`terminal.ts`):
+
+- principal: as últimas 1.200 mensagens do `state.db` (começando no início de uma sessão) e, antes delas, as rodadas
+  das saídas do cron (`## Prompt`, a diferença do monitor e `## Response`); cada sessão abre com um cabeçalho (rotina
+  ou conversa, sessão, modelo, início, duração). O pedido sai sem o aviso padrão do Hermes ("[IMPORTANT: …]"); cada
+  chamada mostra os argumentos e o resultado (sem o envelope `<untrusted_tool_result>`; o JSON de `{"result": "…"}`
+  indentado; erros em vermelho); o raciocínio e a resposta final completos; `[SILENT]` = "Nada a relatar". Ao vivo,
+  só as mensagens novas (o banco relido quando ele ou o `-wal` mudam);
+- histórico do terminal (`/api/sessions/recent`): as sessões dos últimos dias de todos os perfis
+  (`sessionId` = `<perfil>~<id da sessão>`), abertas pelo mesmo conversor (`HistoryProvider` da fonte).
+
+## Painel (`GET /api/hermes/painel`)
+
+`HermesSource.panel()` (cache de 5 s; tipos em `shared/hermes.ts`): o computador, as cotas do dia (UTC), as rotinas
+de cada perfil, as últimas 30 saídas, as leituras dos monitores (com o mercado do Kairo já separado em mandato,
+instâncias, radar, eventos e avisos), o tempo lá fora e os links. Sem a trava do terminal (ex.: celular sem
+`terminal` liberado), as respostas das rotinas ficam de fora. No cliente (`client/src/ui/hermes.ts`):
+
+- **cartão "Hermes · IA hoje"** na barra de uso (no lugar das janelas de 5 h/semana, que o Hermes não tem): chamadas e
+  tokens do dia e o estado (OmniRoute ativo, limites hoje, 429 há pouco); clique abre Cotas de IA;
+- **janela "Servidor do Hermes"**: botão do computador na barra superior, clique no **computador (balcão) da
+  recepção**, na **TV do lounge** (aba Mercado), no **quadro branco** da sala de um perfil (aba Equipe daquele perfil)
+  e o botão "Rotinas, conversas e cotas" na gaveta de um agente do Hermes. Abas: Servidor (CPU, RAM, disco,
+  temperatura, carga, ligado há), Cotas de IA (chamadas por modelo/provedor, uso por tarefa, limites/429 do dia),
+  Equipe (descrição, estado, tokens de hoje e rotinas com próxima/última execução, status, erro, pausada e monitor),
+  Conversas (a resposta completa de cada rodada) e Mercado;
+- **janelas e relógios** do escritório: o tempo lá fora e a hora, num aviso rápido.
+
+No container, `/proc/loadavg` e `/proc/meminfo` mostram a carga e a memória do computador (o kernel é o mesmo); o
+uso de CPU é amostrado entre duas leituras (sem amostra, a carga de 1 min dividida pelos núcleos); o disco é o da
+pasta montada; a temperatura só aparece se `/sys/class/thermal` estiver visível.
+
 ## Limitações
 
-- **Sem terminal nem histórico de sessões:** o terminal do Habblaud segue um arquivo JSONL e a conversa do Hermes está
-  no SQLite (`transcriptPathOf` devolve `undefined`; a rota do terminal responde 404 para esses agentes).
+- **Provedor real atrás do OmniRoute:** o combo "kairo" aparece como `model=kairo provider=custom`. O provedor de
+  verdade só aparece se o log tiver `upstream=`/`routed_to=`/`served_by=` (lido quando houver); senão, o detalhe por
+  provedor fica no painel do próprio OmniRoute (link).
+- A amostra usada no desenvolvimento não tinha `logs/agent.log`; a leitura dele segue o formato do escritório antigo
+  (`API call #N: model=… provider=…` e `WARNING … RateLimitError …`) e, sem log, as chamadas vêm do
+  `session_model_usage`.
 - **Habblaud World:** o protocolo do mundo só conhece `claude` e `codex`; a projeção (`shared/world/projection.ts`, não
   alterada) mandaria os agentes do Hermes como `claude`. Até o protocolo ganhar o Hermes, use `HABBLAUD_WORLD=0` onde a
   fonte estiver ligada.
-- Sem uso de plano (5h/semanal): a conta "Hermes" não tem cartão de uso.
-- As saídas em `cron/output/` não são lidas (a resposta final já vem da tabela `messages`).
+- Sem uso de plano (5h/semanal): o cartão da conta "Hermes" mostra as cotas de IA do dia, sem barras de limite (os
+  limites dos provedores não são publicados no diretório do Hermes).
 - Nome da sala = nome do perfil; a descrição do `profile.yaml` vai no título do agente (renomeie a sala pelo menu, se
   quiser).

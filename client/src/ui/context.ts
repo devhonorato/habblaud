@@ -76,6 +76,11 @@ export interface UiContext {
    * existe com a cena Mundo montada (app.ts).
    */
   visitOwnBuilding?(): void;
+  /**
+   * (Opcional) Painel do Hermes (ui/hermes.ts): com `agentId`, no perfil daquele agente; `tab` escolhe a aba. Só existe
+   * com a fonte do Hermes ligada no servidor.
+   */
+  openHermes?(agentId?: string, tab?: 'servidor' | 'cotas' | 'equipe' | 'conversas' | 'mercado'): void;
   /** Abre as configurações na seção "Sobre" (versão em uso e versão nova). */
   openAbout(): void;
   /** Abre/fecha o timelapse do dia (ui/timelapse.ts). */

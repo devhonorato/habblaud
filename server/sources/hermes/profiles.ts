@@ -55,6 +55,8 @@ export interface CronJob {
   lastStatus?: string;
   lastError?: string;
   nextRunAt?: number;
+  /** Rotina com monitor (monitor_script / monitor_url): só acorda o agente quando a saída do monitor muda. */
+  monitor?: boolean;
 }
 
 function str(v: unknown): string | undefined {
@@ -116,11 +118,12 @@ export function parseJobs(text: string): CronJob[] {
       name: str(o.name) ?? id,
       prompt: str(o.prompt),
       schedule: str(o.schedule_display) ?? sched,
-      enabled: o.enabled !== false,
+      enabled: o.enabled !== false && str(o.state) !== 'paused',
       lastRunAt: isoMs(o.last_run_at),
       lastStatus: str(o.last_status),
       lastError: str(o.last_error),
       nextRunAt: isoMs(o.next_run_at),
+      ...(str(o.monitor_script) || str(o.monitor_url) ? { monitor: true } : {}),
     });
   }
   return out;

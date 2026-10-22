@@ -32,6 +32,7 @@ import { Sidebar } from './sidebar';
 import { SoundControl } from './sound';
 import { TERMINAL_UNAVAILABLE_HINT, TerminalPanel } from './terminal';
 import { PtyPanel } from './pty';
+import { ptyControllable } from './ptyapi';
 import { TimelapsePlayer } from './timelapse';
 import { Toasts } from './toasts';
 import { UpdateToaster } from './version';
@@ -46,6 +47,7 @@ import { worldSectionMode } from './world/world-model';
 import { SceneSwitch, type CitySceneHost } from './world/scene-switch';
 import { worldSource } from '../net/world';
 import { FreeArea } from './viewport';
+import { HermesUi } from './hermes';
 import { tr } from '../../../shared/i18n';
 
 /** Relógio dos tempos relativos ("há 5 s"). */
@@ -197,7 +199,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
     newSession: (cwd, account) => pty.newSession(cwd, account),
     open(id, opener) {
       const readOnly = !!store.snapshot?.meta.terminal && !store.replaying;
-      if (pty.ptyOf(id) || (pty.enabled && !readOnly && ctx.agent(id)?.kind === 'main')) pty.openAgent(id);
+      if (pty.ptyOf(id) || (pty.enabled && !readOnly && ptyControllable(ctx.agent(id)))) pty.openAgent(id);
       else {
         pty.close();
         terminal.open(id, opener);
@@ -275,6 +277,12 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
   help = new HelpDialog();
   const day = new DayLauncher(ctx, (el) => root.append(el));
   topbar.addPanelButton(day.button);
+  // Hermes: o computador (botão e o computador da recepção), as cotas de IA (cartão na barra de uso), a equipe, as
+  // conversas e o mercado, numa janela só (ui/hermes.ts). Fica escondido sem a fonte do Hermes.
+  const hermesUi = new HermesUi(ctx, (n) => toasts.push(n));
+  topbar.addPanelButton(hermesUi.button);
+  topbar.addUsageCard?.(hermesUi.card.el);
+  ctx.openHermes = (agentId, tab) => (agentId ? hermesUi.openFor(agentId, tab) : hermesUi.dialog.open(tab));
   // Botão direito numa sala (lista lateral ou escritório): renomear.
   const renamer = new RoomRenamer(ctx);
   ctx.renameRoom = (id, at) => renamer.open(id, at);
@@ -288,7 +296,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
   const scrim = h('div', { class: 'ui-scrim', attrs: { 'aria-hidden': 'true' }, on: { click: () => ctx.togglePanel('sidebar', false) } });
 
   root.classList.add('ui-root');
-  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, pty.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, popups.el, tip.el, settings.el, worldDialog.el, history.el, deliveries.el, help.el, renamer.el, live, splash.el);
+  root.append(timelapse.vignette, topbar.el, sidebar.el, scrim, feed.el, drawer.el, terminal.el, pty.el, timelapse.el, timelapse.badge, toasts.el, banner.el, update.el, empty.el, popups.el, tip.el, settings.el, worldDialog.el, history.el, deliveries.el, help.el, renamer.el, hermesUi.dialog.el, live, splash.el);
   area = new FreeArea(world, { root, topbar: topbar.el, sidebar: sidebar.el, drawer: drawer.el, feed: feed.el }, () => ({
     sidebar: panels.sidebar,
     feed: panels.feed,
@@ -297,7 +305,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
   }));
   drawer.onLayoutChange = () => applyLayout();
 
-  const components: UiComponent[] = [topbar, sidebar, drawer, terminal, pty, history, deliveries, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster, worldDialog, popups, worldChip];
+  const components: UiComponent[] = [hermesUi, topbar, sidebar, drawer, terminal, pty, history, deliveries, feed, toasts, settings, empty, banner, tip, notifier, splash, timelapse, sound, day, updateToaster, worldDialog, popups, worldChip];
   if (scene) components.push(scene);
   root.append(worldSocial.el);
   components.push(worldSocial);
@@ -395,7 +403,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
       return;
     }
     if (e.key === 'Escape') {
-      if (help.isOpen || settings.isOpen || worldDialog.isOpen || history.isOpen) return; // diálogo/popover tratam o próprio Esc
+      if (help.isOpen || settings.isOpen || worldDialog.isOpen || history.isOpen || hermesUi.dialog.isOpen) return; // diálogo/popover tratam o próprio Esc
       // O terminal flutua sobre tudo: fecha primeiro (a busca dele, depois ele; a gaveta continua aberta).
       if (terminal.isOpen) {
         terminal.escape();
@@ -471,7 +479,7 @@ export function createUI(root: HTMLElement, store: OfficeStore, world: WorldApi,
    */
   function toggleTerminal(): void {
     const id = selection?.type === 'agent' ? selection.id : null;
-    if (id !== null && pty.enabled && ctx.agent(id)?.kind === 'main') return router.toggle(id);
+    if (id !== null && pty.enabled && ptyControllable(ctx.agent(id))) return router.toggle(id);
     if (id === null && pty.isOpen) return pty.close();
     if (terminal.isOpen && (id === null || terminal.agentId === id)) terminal.close();
     else if (id === null) ctx.announce(tr('Selecione um agente para abrir o terminal.'));

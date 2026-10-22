@@ -17,6 +17,15 @@ do meio (0.**3**.0).
   mensagens novas, sai quando o gateway para, e as ferramentas aparecem em português ("Lendo o radar", "Rodando
   backtest de UNIUSDT"). Os bancos SQLite do Hermes são lidos sem escrever nada, também com a pasta montada `:ro` no
   Docker. O servidor sobe só com o Hermes, sem conta do Claude Code nem do Codex.
+- **Hermes: terminal, Vigia, cotas de IA e o computador.** O terminal abre para os agentes do Hermes: cada rotina com
+  o pedido, as ferramentas chamadas (argumentos e resultado), o raciocínio e a resposta completa, lidos do banco e das
+  saídas do cron; o histórico do terminal lista as sessões do Hermes. Cada rotina com monitor ganha o **Vigia**, um
+  segundo personagem na sala: as checagens ficam só no histórico dele e o feed mostra quando ele chama o agente
+  principal e por quê; o terminal dele traz a última leitura do monitor. A conta Hermes ganha o cartão de cotas de IA
+  na barra de uso, e a janela **Servidor do Hermes** (botão na barra, ou clicar no computador da recepção) mostra CPU,
+  RAM, disco, temperatura e ligado há, as cotas por modelo e provedor com os limites/429 do dia, as rotinas de cada
+  perfil, a resposta de cada rodada e o mercado do Kairo (também pela TV do lounge e pelo quadro branco da sala). Venda
+  com lucro acende festa na sala; pausa por risco, alarme.
 
 ## [1.0.3] - 2026-10-16
 

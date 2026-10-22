@@ -2,6 +2,9 @@
 // Implementação: client/src/world/index.ts -> createWorld().
 // Regra: mudanças aqui devem ser ADITIVAS.
 
+import type { PropHit } from './props';
+export type { PropHit, PropKind } from './props';
+
 export type Selection = { type: 'agent'; id: string } | { type: 'room'; id: string } | null;
 
 export interface WorldOptions {
@@ -98,6 +101,12 @@ export interface WorldApi {
    * câmera; ao voltar, a simulação avança o tempo que passou (como com a aba em segundo plano).
    */
   setSuspended?(suspended: boolean): void;
+  /**
+   * (Opcional, aditivo) Clique num móvel que responde (world/props.ts: o computador da recepção, a TV do lounge, o
+   * quadro branco, janelas e relógios). `handler` devolve true se tratou o clique (aí a seleção não muda); `wants`
+   * diz se aquele móvel responde agora (cursor de mão). null desliga.
+   */
+  setPropHandler?(handler: { wants(prop: PropHit): boolean; click(prop: PropHit, at: { x: number; y: number }): boolean } | null): void;
   destroy(): void;
 }
 

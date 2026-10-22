@@ -16,6 +16,7 @@ import type { Activity, AgentInfo, TerminalEntry, TerminalInit } from '../../sha
 import { errMsg, log } from '../log';
 import type { Office } from '../model/office';
 import { FileTail } from '../sources/tail';
+import type { TerminalFeed } from '../sources/source';
 import { createTerminalParser, type TerminalParser } from '../sources/terminal';
 import { sendJson } from './app';
 import { frame } from './sse';
@@ -49,6 +50,11 @@ export interface TerminalOptions {
    * = createParser.
    */
   parserFor?: (agentId: string) => TerminalParser | undefined;
+  /**
+   * Conversa de um agente sem transcript em arquivo (SourceSet.feedFor; ex.: o Hermes, no SQLite): um feed NOVO a cada
+   * chamada. Quando devolve um, vale no lugar do transcript.
+   */
+  feedFor?: (agentId: string) => TerminalFeed | undefined;
   /** Fábrica do parser padrão (testes); padrão: createTerminalParser (o do Claude Code). */
   createParser?: () => TerminalParser;
   /** Conversa fictícia dos agentes do demo (testes); padrão: demoTerminalEntries. */
@@ -151,6 +157,25 @@ class TranscriptSource implements ConversationSource {
   }
 }
 
+/** Conversa montada pela fonte (TerminalFeed): sem arquivo, sem parser de linhas. */
+class FeedSource implements ConversationSource {
+  constructor(
+    private readonly agentId: string,
+    private readonly feed: TerminalFeed,
+    private readonly initEntries: number,
+    readonly intervalMs: number,
+  ) {}
+
+  load(): TerminalInit {
+    const r = this.feed.load(this.initEntries);
+    return { agentId: this.agentId, entries: r.entries, truncated: r.truncated };
+  }
+
+  poll(): PollResult {
+    return { append: this.feed.poll() };
+  }
+}
+
 /** Agente do demo: conversa fictícia montada do título e das atividades simuladas. */
 class DemoSource implements ConversationSource {
   /** Ids da última lista gerada (o que o cliente já tem). */
@@ -245,6 +270,11 @@ export class TerminalStreams {
     this.serve(req, res, streamId, new TranscriptSource(streamId, path, o, this.sessionPollMs));
   }
 
+  /** Sessão do histórico guardada fora de um arquivo (FeedHistorySession). Mesmos erros de attach (429/500). */
+  attachSessionFeed(req: IncomingMessage, res: ServerResponse, streamId: string, feed: TerminalFeed): void {
+    this.serve(req, res, streamId, new FeedSource(streamId, feed, this.initEntries, Math.max(this.sessionPollMs, feed.intervalMs ?? 0)));
+  }
+
   /** Limite de terminais, `init` e o stream SSE de uma fonte já escolhida. */
   private serve(req: IncomingMessage, res: ServerResponse, id: string, source: ConversationSource): void {
     if (this.streams.size >= this.maxStreams) {
@@ -287,6 +317,8 @@ export class TerminalStreams {
   private sourceFor(agentId: string): ConversationSource | string {
     const office = this.opts.office;
     if (office.has(agentId)) {
+      const feed = this.opts.feedFor?.(agentId);
+      if (feed) return new FeedSource(agentId, feed, this.initEntries, feed.intervalMs ?? this.pollMs);
       const path = this.opts.transcriptPathOf(agentId);
       if (!path) return tr('transcript do agente não encontrado');
       const parserFor = this.opts.parserFor;

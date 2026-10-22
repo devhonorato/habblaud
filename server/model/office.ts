@@ -107,6 +107,12 @@ export interface MainInput {
   startedAt: number;
   status: AgentStatus;
   waitingFor?: string;
+  /**
+   * Nome fixo do personagem (ex.: o "Vigia" de uma rotina do Hermes), no lugar do sorteado. Se outro agente já usa o
+   * nome, vale "<nome> (<sala>)".
+   */
+  name?: string;
+  look?: 'f' | 'm';
 }
 
 export interface SubInput {
@@ -158,7 +164,7 @@ export interface CommitResult {
   notices: Notice[];
 }
 
-type NoticeKind = 'arrive' | 'room' | 'wait' | 'deliver' | 'done' | 'leave' | 'shell' | 'shellDone' | 'github' | 'character';
+type NoticeKind = 'arrive' | 'room' | 'wait' | 'deliver' | 'done' | 'leave' | 'shell' | 'shellDone' | 'github' | 'character' | 'effect';
 
 /** Pergunta ainda sem resposta (o balão dela já diz que o agente espera você). */
 function isOpenQuestion(a: Activity | undefined): boolean {
@@ -324,10 +330,11 @@ export class Office {
     }
     const roomId = normalizeCwd(p.cwd);
     this.ensureRoom(roomId, now);
-    const chosen = this.roomCharacter(roomId, p.id, p.sessionId);
+    const chosen = p.name ? undefined : this.roomCharacter(roomId, p.id, p.sessionId);
     // A mesma sessão retomada noutro processo (ex.: "Assumir aqui") mantém o nome, mesmo com o processo antigo
     // ainda saindo do escritório.
-    const person = chosen ?? this.deps.names.assign(p.sessionId, this.takenNames(undefined, p.sessionId));
+    const fixed = p.name ? { name: this.takenNames(p.id).has(p.name) ? `${p.name} (${this.roomName(roomId)})` : p.name, look: p.look ?? 'm' } : undefined;
+    const person = fixed ?? chosen ?? this.deps.names.assign(p.sessionId, this.takenNames(undefined, p.sessionId));
     const info: AgentInfo = {
       id: p.id,
       kind: 'main',
@@ -532,6 +539,18 @@ export class Office {
     const ci = ev.kind === 'ci_failed' || ev.kind === 'ci_passed';
     this.notice('github', id, d.level, d.notice, info.roomId, { dedupeKey: `${info.roomId}|gh|${githubEventKey(ev)}`, dedupeMs: ci ? 120_000 : NOTICE_DEDUPE_MS });
     if (this.effects.apply(info.roomId, ev, now, id)) this.markDirty();
+  }
+
+  /**
+   * Efeito na sala do agente vindo de outra fonte que não o GitHub (ex.: o mercado do Kairo lido pelo Vigia do Hermes):
+   * festa ou alarme por `ms`, com o aviso `notice` (opcional). Fora do boot.
+   */
+  roomEffect(id: string, kind: 'party' | 'alarm', text: string, ms: number, notice?: string): void {
+    const rec = this.agents.get(id);
+    if (!rec || this.booting) return;
+    const now = this.now();
+    if (notice) this.notice('effect', id, kind === 'party' ? 'success' : 'warn', notice, rec.info.roomId, { dedupeKey: `${rec.info.roomId}|fx|${text}` });
+    if (this.effects.set(rec.info.roomId, kind, text, ms, now, id)) this.markDirty();
   }
 
   /** Rótulo do shell mais antigo (Bash antes de Monitor), quantos são e o detalhe (comando). */

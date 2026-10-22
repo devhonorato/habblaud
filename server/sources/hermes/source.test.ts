@@ -1,6 +1,6 @@
 // Integração da fonte do Hermes: um diretório de dados sintético (perfis, state.db e executions.db em WAL com uma
 // conexão de escrita aberta, como o Hermes rodando), o AccountsService e o Office. Nada da amostra real entra aqui.
-import { chmodSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentInfo } from '../../../shared/types';
@@ -372,5 +372,137 @@ describe('fonte do Hermes: banco ausente, ilegível e somente leitura', () => {
     const missing = new ReadOnlyDb(join(tmp.dir, 'nada.db'), sqlite);
     expect(missing.read(() => 1)).toBeUndefined();
     expect(missing.error).toBe('ausente');
+  });
+});
+
+describe('fonte do Hermes: Vigia, terminal, histórico e painel', () => {
+  const monitorJobs = (h: ReturnType<typeof setup>) =>
+    writeFileSync(
+      join(h.crypto, 'cron', 'jobs.json'),
+      JSON.stringify({ jobs: [{ id: JOB, name: 'vigia-mercado', prompt: 'Avalie', enabled: true, schedule_display: 'every 5m', monitor_script: 'vigia.py', last_status: 'ok' }] }),
+    );
+  const outDir = (h: ReturnType<typeof setup>) => {
+    const d = join(h.crypto, 'cron', 'output', JOB);
+    mkdirSync(d, { recursive: true });
+    return d;
+  };
+  const finished = (h: ReturnType<typeof setup>, id: string, ms: number) =>
+    h.execs
+      .prepare('INSERT INTO executions (id, job_id, source, process_id, pid, status, claimed_at, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .all(id, JOB, 'builtin', 'p', 1, 'completed', new Date(T0 - 1).toISOString(), new Date(T0).toISOString(), new Date(T0 + ms).toISOString());
+
+  it('rotina com monitor ganha o Vigia; checagens só no histórico; a sessão do cron vira "Chamou <principal>" no feed', () => {
+    const h = setup();
+    monitorJobs(h);
+    const out = outDir(h);
+    writeFileSync(join(out, 'monitor_last_output.txt'), 'mandato ativo=True disponivel~10\ninstancia AAAUSDT 1h status=ATIVA posicao=sim resultado~2%\n');
+    h.source.boot();
+    const vid = `hermes:crypto:vigia:${JOB}`;
+    const main = h.agent('hermes:crypto')!;
+    expect(h.agent(vid)).toMatchObject({ name: 'Vigia', role: 'Vigia do mercado', provider: 'hermes', roomId: main.roomId, status: 'idle', title: 'Rotina: vigia-mercado (every 5m)' });
+
+    finished(h, 'e-curta', 400);
+    h.advance(2_000);
+    h.poll();
+    expect(h.history(vid).map((a) => a.text)).toContain('Checagem: sem mudança');
+    expect(h.office.recentFeed(50).some((f) => f.agentId === vid)).toBe(false);
+
+    const sid = `cron_${JOB}_20261022_180500`;
+    h.session(sid);
+    h.message(sid, 'user', { content: 'Algo mudou\n\n```diff\n-evento 1 CRIADA\n+evento 2 VENDA\n```' });
+    h.poll();
+    const wake = h.history(vid).find((a) => a.icon === '📣')!;
+    expect(wake.text).toBe(`Chamou ${main.name}: evento VENDA`);
+    expect(h.office.recentFeed(50).some((f) => f.agentId === vid && f.activity.text === wake.text)).toBe(true);
+
+    // venda com lucro: festa na sala
+    writeFileSync(join(out, 'monitor_last_output.txt'), 'mandato ativo=True disponivel~12\ninstancia AAAUSDT 1h status=ATIVA posicao=nao resultado~None%\n');
+    const later = new Date(T0 + 60_000);
+    utimesSync(join(out, 'monitor_last_output.txt'), later, later);
+    h.advance(1_000);
+    h.poll();
+    const room = h.office.commit().snapshot.rooms.find((r) => r.id === main.roomId)!;
+    expect(room.effect).toMatchObject({ kind: 'party', text: 'Venda com lucro: AAAUSDT +2%' });
+    expect(h.history(vid).map((a) => a.text)).toContain('Leitura nova do monitor');
+  });
+
+  it('terminal: principal pelo banco, Vigia com a leitura; histórico lista e abre as sessões', async () => {
+    const h = setup();
+    monitorJobs(h);
+    writeFileSync(join(outDir(h), 'monitor_last_output.txt'), 'radar AAAUSDT nota~90 1h\n');
+    const sid = `cron_${JOB}_20261022_180000`;
+    h.session(sid, { ended: T0 / 1000 + 30 });
+    h.message(sid, 'user', { content: 'Revise' });
+    h.message(sid, 'assistant', { content: 'Tudo certo.', finish: 'stop' });
+    h.source.boot();
+    const main = h.source.terminalFeed('hermes:crypto')!.load(100);
+    expect(main.entries.map((e) => e.kind)).toEqual(['system', 'user', 'assistant', 'system']);
+    const vigia = h.source.terminalFeed(`hermes:crypto:vigia:${JOB}`)!.load(100);
+    expect(vigia.entries.at(-1)).toMatchObject({ kind: 'assistant', text: expect.stringContaining('radar AAAUSDT nota~90 1h') });
+    expect(h.source.terminalFeed('hermes:nada')).toBeUndefined();
+
+    const hist = h.source.history();
+    const list = await hist.list();
+    expect(list[0]).toMatchObject({ account: 'hermes', provider: 'hermes', sessionId: `crypto~${sid}`, title: 'Rotina: vigia-mercado', open: false });
+    const r = hist.resolve('hermes', `crypto~${sid}`);
+    expect('createFeed' in r && r.createFeed().load(100).entries.length).toBe(4);
+    expect(hist.resolve('hermes', '../x')).toMatchObject({ status: 400 });
+    expect(hist.resolve('hermes', 'crypto~nada')).toMatchObject({ status: 404 });
+    expect(hist.hasAccount('hermes')).toBe(true);
+  });
+
+  it('painel: computador, cotas (logs e usage_audit), rotinas, saídas e monitor', () => {
+    const h = setup();
+    monitorJobs(h);
+    const out = outDir(h);
+    writeFileSync(join(out, '2026-10-22_17-00-00.md'), '# Cron Job: vigia-mercado\n\n## Prompt\n\nx\n\n## Response\n\nVendi.\n');
+    writeFileSync(join(out, '2026-10-22_17-05-00.md'), '# Cron Job: vigia-mercado\n\n**Status:** no_change (agent run suppressed)\n');
+    writeFileSync(join(out, 'monitor_last_output.txt'), 'mandato ativo=True disponivel~31\n');
+    writeFileSync(
+      join(h.crypto, 'cron', 'usage_audit.jsonl'),
+      [
+        JSON.stringify({ ts: '2026-10-21T10:00:00Z', total_tokens: 999 }),
+        JSON.stringify({ ts: '2026-10-22T10:00:00Z', total_tokens: 100, model: 'kairo' }),
+        JSON.stringify({ ts: '2026-10-22T11:00:00Z', total_tokens: 50, error: 'HTTP 429 rate limit', model: 'kairo' }),
+      ].join('\n'),
+    );
+    mkdirSync(join(h.root, 'logs'), { recursive: true });
+    writeFileSync(
+      join(h.root, 'logs', 'agent.log'),
+      [
+        '2026-10-22 10:00:01,000 INFO run_agent: API call #1: model=kairo provider=custom in=10',
+        '2026-10-22 10:00:02,000 INFO run_agent: API call #2: model=kairo provider=custom in=10',
+        '2026-10-21 10:00:02,000 INFO run_agent: API call #2: model=velho provider=x',
+        '2026-10-22 10:05:00,000 WARNING run_agent: retry error_type=RateLimitError provider=custom model=kairo HTTP 429',
+      ].join('\n'),
+    );
+    h.source.boot();
+    const p = h.source.panel();
+    expect(p.quotas).toMatchObject({ day: '2026-10-22', tokensToday: 150, runsToday: 2, logFound: true });
+    expect(p.quotas.calls).toEqual([{ model: 'kairo', provider: 'custom', calls: 2, limits: 1, limitedAt: Date.UTC(2026, 9, 22, 10, 5, 0) }]);
+    expect(p.quotas.limits.length).toBe(2);
+    const crypto = p.profiles.find((x) => x.name === 'crypto')!;
+    expect(crypto.jobs[0]).toMatchObject({ name: 'vigia-mercado', monitor: true, vigiaId: `hermes:crypto:vigia:${JOB}` });
+    expect(crypto.outputs.map((o) => o.kind)).toEqual(['no_change', 'agent']);
+    expect(crypto.outputs[1].text).toBe('Vendi.');
+    expect(crypto.monitors[0]).toMatchObject({ lines: ['mandato ativo=True disponivel~31'], market: { online: true, available: '31' } });
+    expect(typeof p.system).toBe('object');
+  });
+});
+
+describe('fonte do Hermes: o feed do boot não traz as checagens do Vigia', () => {
+  it('checagens antigas ficam só no histórico', () => {
+    const h = setup();
+    writeFileSync(
+      join(h.crypto, 'cron', 'jobs.json'),
+      JSON.stringify({ jobs: [{ id: JOB, name: 'vigia-mercado', enabled: true, monitor_script: 'v.py' }] }),
+    );
+    h.execs
+      .prepare('INSERT INTO executions (id, job_id, source, process_id, pid, status, claimed_at, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .all('old', JOB, 'builtin', 'p', 1, 'completed', new Date(T0 - 60_000).toISOString(), new Date(T0 - 60_000).toISOString(), new Date(T0 - 59_600).toISOString());
+    h.source.boot();
+    const vid = `hermes:crypto:vigia:${JOB}`;
+    expect(h.history(vid).map((a) => a.text)).toContain('Checagem: sem mudança');
+    expect(h.office.recentFeed(50).some((f) => f.agentId === vid)).toBe(false);
   });
 });

@@ -217,15 +217,24 @@ export class UsageCards {
     if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.fit()).observe(ctx.root);
   }
 
+  /** Cartões de fora da lista (ex.: o das cotas de IA do Hermes, ui/hermes.ts), sempre no fim. */
+  private extras: HTMLElement[] = [];
+
+  addExtra(el: HTMLElement): void {
+    this.extras.push(el);
+    this.el.append(el);
+  }
+
   render(): void {
-    // O Hermes não tem plano com limite de uso: a conta dele não ganha cartão.
+    // O Hermes não tem plano com limite de uso: a conta dele ganha o cartão de cotas de IA (addExtra), não este.
     const accounts = (this.ctx.store.snapshot?.accounts ?? []).filter((a) => a.provider !== 'hermes');
     this.list.sync(accounts);
-    this.el.classList.toggle('is-empty', accounts.length === 0);
+    for (const el of this.extras) if (el.parentElement === this.el && el !== this.el.lastElementChild) this.el.append(el);
+    this.el.classList.toggle('is-empty', accounts.length === 0 && this.extras.every((e) => e.hidden));
     setStyleVar(this.el, '--count', String(accounts.length));
     // Medir força o layout da página, e o render roda a cada quadro no replay: só quando as contas mudam (a largura da
     // janela fica com o ResizeObserver do construtor).
-    const key = accounts.map((a) => a.id).join('|');
+    const key = [...accounts.map((a) => a.id), ...this.extras.map((e) => (e.hidden ? '' : 'x'))].join('|');
     if (key !== this.fitKey) {
       this.fitKey = key;
       this.fit();
