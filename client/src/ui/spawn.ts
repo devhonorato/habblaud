@@ -85,7 +85,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(path, { credentials: 'same-origin', cache: 'no-store', ...init });
   } catch {
-    throw new Error(tr('o Habblaud não respondeu'));
+    throw new Error(tr('o Atrio não respondeu'));
   }
   const body = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) throw new Error(body.error ?? tr('erro {0}', [res.status]));

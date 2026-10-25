@@ -499,7 +499,7 @@ if (config.remote) {
 
 server.listen(config.port, config.host, () => {
   const host = config.host === '0.0.0.0' || config.host === '::' ? 'localhost' : config.host;
-  log.info(tr('🏢 Habblaud {0}{1}{2} em http://{3}:{4}', [config.version, config.dev ? ' (dev)' : '', config.inDocker ? ' (docker)' : '', host, config.port]));
+  log.info(tr('🏢 Atrio {0}{1}{2} em http://{3}:{4}', [config.version, config.dev ? ' (dev)' : '', config.inDocker ? ' (docker)' : '', host, config.port]));
   const list = accounts.entries();
   // Só com o Hermes (ex.: o container ao lado dele, sem conta do Claude Code nem do Codex) não é um problema: só informa.
   if (!list.length) (hermes ? log.info : log.warn)(tr('Nenhuma pasta do Claude Code encontrada (defina HABBLAUD_CLAUDE_DIRS).'));

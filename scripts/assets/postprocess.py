@@ -27,6 +27,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
+import atrio
 import pixelart as art
 import pixelops as px
 
@@ -345,7 +346,7 @@ def main() -> int:
     by_id = {a["id"]: a for a in specs["assets"]}
     detailed_path = out_root / by_id["logo-mark"]["out"]
     detailed = Image.open(detailed_path).convert("RGBA") if detailed_path.exists() else None
-    brand = build_brand(detailed, out_root)
+    brand = atrio.build_brand(out_root)
 
     ill_spec = by_id["empty-office"]
     ill_path = out_root / ill_spec["out"]
@@ -356,7 +357,7 @@ def main() -> int:
         big = Image.open(ill_path)
         illustration = big.resize((big.width // ill_scale, big.height // ill_scale), Image.NEAREST)
         illustrations["emptyOffice"] = {"file": ill_spec["out"], "w": big.width, "h": big.height, "scale": ill_scale}
-    og = build_og(detailed, illustration, out_root)
+    og = atrio.build_og(out_root)
 
     wall_art = []
     for asset in specs["assets"]:

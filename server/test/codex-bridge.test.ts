@@ -182,7 +182,7 @@ describe('spawnRound com anexos e dictationRound', () => {
       files.map((f) => (wrote.push(`${id}:${f.name}:${f.data.toString()}`), `/h/att/${f.name}`)),
     );
     expect(wrote).toEqual(['a:print.png:png']);
-    expect(new URL(opened[0]).searchParams.get('q')).toBe('veja\n\nAnexo enviado pelo Habblaud (leia antes de começar):\n- /h/att/print.png');
+    expect(new URL(opened[0]).searchParams.get('q')).toBe('veja\n\nAnexo enviado pelo Atrio (leia antes de começar):\n- /h/att/print.png');
     expect(r).toEqual({ state: 'ok', results: [{ id: 'a', ok: true, how: 'app' }, { id: 'b', ok: false, error: 'anexo ilegível' }] });
   });
 

@@ -438,7 +438,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     if (terminalMatch) {
       if (method !== 'GET') methodNotAllowed(res, 'GET');
       else if (!terminals) {
-        sendJson(res, 403, { error: tr('terminal desligado: ele só funciona com o Habblaud acessível apenas pelo próprio computador') });
+        sendJson(res, 403, { error: tr('terminal desligado: ele só funciona com o Atrio acessível apenas pelo próprio computador') });
       } else if (!trusted(req, 'terminal')) {
         sendJson(res, 403, { error: denied(req, tr('o terminal só abre pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
       } else {
@@ -464,7 +464,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     if (path === '/api/permissions' || path.startsWith('/api/permissions/')) {
       // Responder pelo escritório age sobre as sessões: a mesma trava do terminal (bind local + Host local).
       if (!deps.permissions) {
-        sendJson(res, 403, { error: tr('responder pelo escritório desligado: só funciona com o Habblaud acessível apenas pelo próprio computador') });
+        sendJson(res, 403, { error: tr('responder pelo escritório desligado: só funciona com o Atrio acessível apenas pelo próprio computador') });
       } else if (!trusted(req, 'permissions')) {
         sendJson(res, 403, { error: denied(req, tr('pedidos de permissão só são respondidos pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
       } else {
@@ -485,7 +485,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       // Mudar o personagem age sobre o escritório: a mesma trava do terminal (bind local + Host local).
       if (method !== 'PUT' && method !== 'DELETE') methodNotAllowed(res, 'PUT, DELETE');
       else if (!deps.terminal) {
-        sendJson(res, 403, { error: tr('editar o personagem desligado: só funciona com o Habblaud acessível apenas pelo próprio computador') });
+        sendJson(res, 403, { error: tr('editar o personagem desligado: só funciona com o Atrio acessível apenas pelo próprio computador') });
       } else if (!trusted(req)) {
         sendJson(res, 403, { error: denied(req, tr('o personagem só é editado pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
       } else {
@@ -657,7 +657,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       // As mensagens entram na sessão como se você as tivesse digitado: a mesma trava (recurso ligado + Host local).
       if (!deps.messages) {
         sendJson(res, 403, {
-          error: tr('mensagens pelo escritório desligadas: só funcionam com o Habblaud acessível apenas pelo próprio computador (e sem HABBLAUD_MENSAGENS=0)'),
+          error: tr('mensagens pelo escritório desligadas: só funcionam com o Atrio acessível apenas pelo próprio computador (e sem HABBLAUD_MENSAGENS=0)'),
         });
       } else if (!trusted(req, 'messages')) {
         sendJson(res, 403, { error: denied(req, tr('mensagens só são mandadas pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
@@ -686,7 +686,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
     if (path === '/api/rooms/rename') {
       // Como o personagem: a mesma trava do terminal (bind local + Host local).
       if (method !== 'POST') methodNotAllowed(res, 'POST');
-      else if (!deps.terminal) sendJson(res, 403, { error: tr('renomear salas desligado: só funciona com o Habblaud acessível apenas pelo próprio computador') });
+      else if (!deps.terminal) sendJson(res, 403, { error: tr('renomear salas desligado: só funciona com o Atrio acessível apenas pelo próprio computador') });
       else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('renomear salas só pelo próprio computador (http://localhost)')) });
       else
         readJson(req)

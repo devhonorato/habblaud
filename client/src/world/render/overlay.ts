@@ -16,6 +16,7 @@ import { buildAnim } from './anim';
 import { drawFxBanner } from './github-fx';
 import type { HeadInfo, Renderer } from './renderer';
 import { tr } from '../../../../shared/i18n';
+import { NOME_PRODUTO } from '../../../../shared/marca';
 
 // A Pixelify Sans tem o "C" maiúsculo quase fechado (lê-se "Oopa" em vez de "Copa") em qualquer
 // peso/tamanho usado no canvas; os textos do mundo usam a fonte do sistema, sempre legível.
@@ -429,7 +430,7 @@ export class Overlay {
       const anim = room ? buildAnim(room.phase, room.progress(now)) : null;
       // texto da placa quando ela fica grande o bastante para ler; senão, o nome flutuante
       const rect = this.renderer.signRect(vis);
-      const text = room ? room.info.name : vis.id === 'core:recepcao' ? 'Habblaud' : null;
+      const text = room ? room.info.name : vis.id === 'core:recepcao' ? NOME_PRODUTO : null;
       const readable = !!rect && rect.h * zoom >= SIGN_MIN_PX;
       if (readable && rect && text && (!anim || anim.sign >= 1)) {
         const ax = this.sx(rect.x);

@@ -401,9 +401,9 @@ describe('cartão "Seu prédio"', () => {
     expect(buildingState({ ...live, left: true }, false)).toBe('no_player');
   });
 
-  it('parado pelo servidor do mundo: cada motivo com o seu texto; "Atualize o Habblaud" e "Conectado em outro computador"', () => {
+  it('parado pelo servidor do mundo: cada motivo com o seu texto; "Atualize o Atrio" e "Conectado em outro computador"', () => {
     const stopped = (reason: WorldBuildingStop) => buildingView({ ...live, connected: false, stopped: reason }, true, NOW);
-    expect(stopped('update')).toMatchObject({ state: 'stopped', label: 'Atualize o Habblaud', toggle: null, leave: true, rejected: null });
+    expect(stopped('update')).toMatchObject({ state: 'stopped', label: 'Atualize o Atrio', toggle: null, leave: true, rejected: null });
     expect(stopped('other-device')).toMatchObject({ label: 'Conectado em outro computador', toggle: { action: 'resume', text: 'Trazer para este computador' }, leave: true });
     expect(stopped('suspended').toggle).toMatchObject({ action: 'resume', text: 'Tentar de novo' });
     expect(stopped('banned')).toMatchObject({ label: 'Conta banida', toggle: null, leave: false });

@@ -30,7 +30,7 @@ async function renameRequest(id: string, name: string): Promise<void> {
   try {
     res = await fetch('/api/rooms/rename', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, name }) });
   } catch {
-    throw new Error(tr('o Habblaud não respondeu'));
+    throw new Error(tr('o Atrio não respondeu'));
   }
   if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? tr('erro {0}', [res.status]));
 }

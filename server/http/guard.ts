@@ -119,7 +119,7 @@ export function createRequestGuard(opts: GuardOptions = {}): (req: IncomingMessa
       reject(
         res,
         403,
-        tr('Host não permitido: {0}. Abra o Habblaud por http://localhost (ou pelo IP) ', [String(host).slice(0, 100)]) +
+        tr('Host não permitido: {0}. Abra o Atrio por http://localhost (ou pelo IP) ', [String(host).slice(0, 100)]) +
           tr('ou libere o nome em HABBLAUD_ALLOWED_HOSTS.'),
       );
       return true;

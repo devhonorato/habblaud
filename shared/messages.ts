@@ -16,5 +16,5 @@ const DETAIL_MAX = 300;
  */
 export function describeMessage(text: string): ActivityDescription & { tool: string } {
   const detail = truncate(maskSecrets(text.slice(0, DETAIL_MAX * 4)), DETAIL_MAX);
-  return { kind: 'communicate', icon: '✉️', text: tr('Mensagem pelo Habblaud'), tool: MESSAGE_TOOL, ...(detail ? { detail } : {}) };
+  return { kind: 'communicate', icon: '✉️', text: tr('Mensagem pelo Atrio'), tool: MESSAGE_TOOL, ...(detail ? { detail } : {}) };
 }

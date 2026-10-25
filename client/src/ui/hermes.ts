@@ -344,7 +344,7 @@ export class HermesDialog implements UiComponent {
         [tr('Tokens hoje'), formatTokens(t.tokens)],
         [tr('Hora'), new Date(now).toLocaleString()],
       ]),
-      h('p', { class: 'ui-hp__note', text: tr('No container do Habblaud, CPU, carga e memória são as do computador; o disco é o da pasta do Hermes. Sem a temperatura, o computador não expõe /sys/class/thermal ao container.') }),
+      h('p', { class: 'ui-hp__note', text: tr('No container do Atrio, CPU, carga e memória são as do computador; o disco é o da pasta do Hermes. Sem a temperatura, o computador não expõe /sys/class/thermal ao container.') }),
       d.links?.beszel ? h('p', {}, link(d.links.beszel, tr('Abrir o Beszel ↗'))) : null,
     );
   }

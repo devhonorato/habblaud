@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="client/public/assets/brand/logo-mark@4x.png" width="96" alt="Habblaud logo: a small pixel-art building" />
+  <img src="client/public/assets/brand/logo-mark@4x.png" width="96" alt="Atrio logo: a pixel-art building front with a teal atrium door and lit windows" />
 </p>
 
 <h1 align="center">Habblaud</h1>
@@ -38,8 +38,20 @@ Everything runs on your machine, reading the files Claude Code itself already wr
 your shell, to give each account its letter). Nothing leaves the computer: Habblaud doesn't read credentials or make
 external calls.
 
+## Fork Atrio
+
+This fork shows the brand **Atrio**, the owner's agent server: "the atrium of the building where the agents work".
+The mark is a building front in pixel art (graphite outline, teal atrium door, lit windows), in the same family as
+Kairo (graphite and gold), with teal `#2DD4BF` as the only accent. The name shown in the interface comes from
+`shared/marca.ts`; the images come from `scripts/assets/atrio.py` (`python3 -E scripts/assets/atrio.py`). Package,
+routes, `HABBLAUD_*` variables, file names and Habblaud World keep the original names.
+
+Atrio is based on [Habblaud](https://github.com/marmottajr/habblaud), MIT license. The original `LICENSE` stays in
+this repository, and the credit appears in the help (`?` › About) and in Settings › About.
+
 ## Contents
 
+- [Fork Atrio](#fork-atrio)
 - [What it looks like](#what-it-looks-like)
 - [Installation](#installation)
 - [How to use](#how-to-use)

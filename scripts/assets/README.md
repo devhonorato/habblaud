@@ -12,6 +12,7 @@ scripts/assets/
   postprocess.py        CLI: processa as imagens brutas e compõe marca, ícones, molduras, og-image e manifest
   pixelops.py           operações de imagem (chroma key, detecção de grade, redução por moda, paleta...)
   pixelart.py           pixel art desenhada à mão: mark 32/16 px, fonte bitmap e placa "Habblaud"
+  atrio.py              marca Atrio (fork): mark 32/16 px, placa, ícones, og-image e o logotipo de icons.ts
   test_pixelops.py      testes (unittest da stdlib)
   generation-log.json   todas as requisições: modelo, prompt exato, arquivo, custo e tomadas escolhidas
   .cache/               (ignorado) raw/ = imagem bruta em uso, takes/ = todas as tomadas, contact-sheet.png

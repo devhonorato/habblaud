@@ -127,7 +127,7 @@ describe('SpawnService com anexos', () => {
     s.submit({ folder: '/p', prompt: 'conserte', attachments: ['f1'] });
     await new Promise((ok) => setTimeout(ok, 0));
     expect(written).toEqual(['s2:print.png']);
-    expect(new URL(opened[0]).searchParams.get('q')).toBe('conserte\n\nAnexo enviado pelo Habblaud (leia antes de começar):\n- /h/att/print.png');
+    expect(new URL(opened[0]).searchParams.get('q')).toBe('conserte\n\nAnexo enviado pelo Atrio (leia antes de começar):\n- /h/att/print.png');
     expect(s.get('s2')?.status).toBe('opened');
   });
 

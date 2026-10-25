@@ -12,6 +12,12 @@ do meio (0.**3**.0).
 
 ### Adicionado
 
+- **Marca Atrio (fork).** O nome exibido passa a ser Atrio: título da página, logotipo "atrio" em pixels na barra do
+  topo (pingo do i em verde-água), placa da recepção, notificações ("Atrio — precisa de você") e os textos da
+  interface. Símbolo novo em pixel art (fachada grafite com a porta do átrio em verde-água e janelas acesas) em todos
+  os tamanhos: favicon, ícones do app, placa e og-image, gerados por `scripts/assets/atrio.py`. O app instalado
+  (PWA) se chama Atrio, com tema grafite. A ajuda e Configurações › Sobre trazem o crédito: "Atrio é baseado no
+  Habblaud (github.com/marmottajr/habblaud), licença MIT."
 - **Hermes Agent no escritório.** Com `HABBLAUD_HERMES_DIR` apontando para o diretório de dados do Hermes Agent
   (NousResearch), cada perfil vira uma sala com um agente permanente: trabalha quando uma rotina do cron roda ou há
   mensagens novas, sai quando o gateway para, e as ferramentas aparecem em português ("Lendo o radar", "Rodando

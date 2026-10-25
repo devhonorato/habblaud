@@ -47,7 +47,7 @@ export const ERR_GONE = tr('o agente saiu do escritório');
 export const ERR_REFUSED = tr('a sessão não aceitou a mensagem');
 export const ERR_SESSION_CHANGED = tr('a conversa do agente mudou (/clear ou /resume) antes da entrega');
 export const ERR_CODEX_UNAVAILABLE =
-  tr('não há como entregar ao Codex agora: rode o Habblaud fora do Docker com o `codex` no PATH (ou HABBLAUD_CODEX_BIN) ou, no Docker, deixe o npm run codex:bridge rodando no Mac');
+  tr('não há como entregar ao Codex agora: rode o Atrio fora do Docker com o `codex` no PATH (ou HABBLAUD_CODEX_BIN) ou, no Docker, deixe o npm run codex:bridge rodando no Mac');
 export const ERR_CODEX_NOT_FETCHED = tr('o auxiliar do Codex não buscou a mensagem: o npm run codex:bridge está rodando no Mac?');
 export const ERR_CODEX_SLOW = tr('o Codex demorou demais com as mensagens anteriores a este agente');
 export const ERR_CODEX_NOT_CONFIRMED = tr('o auxiliar do Codex não confirmou a entrega');

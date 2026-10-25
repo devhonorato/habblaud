@@ -736,7 +736,7 @@ class AgentView {
                   this.pty.enabled && ptyControllable(this.last) ? tr('; "Assumir daqui" continua nela aqui') : '',
                 ])
               : kind === 'interativo'
-                ? tr('Abrir o terminal desta sessão, que roda aqui no Habblaud (T)')
+                ? tr('Abrir o terminal desta sessão, que roda aqui no Atrio (T)')
                 : tr('Abrir o terminal: a sessão roda em outro terminal; dá para assumir daqui (T)'),
     );
   }

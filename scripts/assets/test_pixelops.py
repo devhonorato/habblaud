@@ -7,6 +7,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
+import atrio
 import pixelart
 import pixelops as px
 
@@ -83,6 +84,25 @@ class FontTest(unittest.TestCase):
             self.assertEqual(mark.size, (size, size))
             self.assertLessEqual(set(np.array(mark)[..., 3].ravel().tolist()), {0, 255})
         self.assertIsInstance(pixelart.signage(), Image.Image)
+
+
+class AtrioTest(unittest.TestCase):
+    def test_marks_tem_tamanho_e_alfa_binario(self) -> None:
+        for size in (16, 32):
+            mark = atrio.mark(size)
+            self.assertEqual(mark.size, (size, size))
+            self.assertLessEqual(set(np.array(mark)[..., 3].ravel().tolist()), {0, 255})
+
+    def test_placa_e_logotipo(self) -> None:
+        self.assertEqual(atrio.signage().size, (64, 16))
+        rows = atrio.wordmark_rows()
+        self.assertEqual(len(rows), pixelart.CAP_HEIGHT + 1)
+        self.assertEqual("".join(rows).count("t"), 1)
+
+    def test_icones_e_og(self) -> None:
+        self.assertEqual(atrio.app_icon(45, 4).size, (180, 180))
+        self.assertEqual(atrio.app_icon(128, 4, 3).size, (512, 512))
+        self.assertEqual(atrio.og_image().size, (1200, 630))
 
 
 if __name__ == "__main__":

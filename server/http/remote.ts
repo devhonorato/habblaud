@@ -28,6 +28,7 @@ import { dirname, join } from 'node:path';
 import { parsePasswordHash, verifyPassword, type PasswordHash } from '../remote/password';
 import { hostAllowed } from './guard';
 import { getLocale, tr } from '../../shared/i18n';
+import { NOME_PRODUTO } from '../../shared/marca';
 
 export type RemoteFeature = 'permissions' | 'messages' | 'terminal' | 'spawn';
 
@@ -301,7 +302,7 @@ function esc(text: string): string {
 
 export function loginPage(opts: { caDownload: boolean }): string {
   const ca = opts.caDownload
-    ? `<p class="ca">${esc(tr('Primeira vez neste celular?'))} <a href="${CA_PATH}" download="habblaud-ca.crt">${esc(tr('Instale o certificado do Habblaud'))}</a> ${esc(tr('para tirar o aviso de segurança (confira a impressão digital que o npm run remote:setup mostrou).'))}</p>`
+    ? `<p class="ca">${esc(tr('Primeira vez neste celular?'))} <a href="${CA_PATH}" download="habblaud-ca.crt">${esc(tr('Instale o certificado do Atrio'))}</a> ${esc(tr('para tirar o aviso de segurança (confira a impressão digital que o npm run remote:setup mostrou).'))}</p>`
     : '';
   // Dentro do <script>: JSON com "<" escapado, para nenhum texto fechar a tag.
   const js = (text: string) => JSON.stringify(text).replace(/</g, '\\u003c');
@@ -311,12 +312,12 @@ export function loginPage(opts: { caDownload: boolean }): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>${esc(tr('Habblaud · entrar'))}</title>
+<title>${esc(tr('Atrio · entrar'))}</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Habblaud">
+<meta name="apple-mobile-web-app-title" content="${NOME_PRODUTO}">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <style>
   :root { color-scheme: dark; }
@@ -340,7 +341,7 @@ export function loginPage(opts: { caDownload: boolean }): string {
 </head>
 <body>
 <form id="f" autocomplete="on">
-  <h1>Habblaud</h1>
+  <h1>${NOME_PRODUTO}</h1>
   <p>${esc(tr('Acesso pelo celular. Entre com o usuário e a senha que você escolheu no npm run remote:setup.'))}</p>
   <label for="u">${esc(tr('Usuário'))}</label>
   <input id="u" name="username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
@@ -361,7 +362,7 @@ export function loginPage(opts: { caDownload: boolean }): string {
       if (r.ok) { location.replace('/'); return; }
       const body = await r.json().catch(() => ({}));
       err.textContent = body.error || ${js(tr('Não deu para entrar.'))};
-    } catch { err.textContent = ${js(tr('Sem conexão com o Habblaud.'))}; }
+    } catch { err.textContent = ${js(tr('Sem conexão com o Atrio.'))}; }
     b.disabled = false;
   });
 </script>
@@ -507,7 +508,7 @@ export function createRemoteGate(deps: RemoteGateDeps): (req: IncomingMessage, r
 
     req.resume();
     if (path === '/api' || path.startsWith('/api/')) {
-      sendJson(res, 401, { error: tr('faça login: abra o Habblaud por esta porta no navegador e entre com usuário e senha') });
+      sendJson(res, 401, { error: tr('faça login: abra o Atrio por esta porta no navegador e entre com usuário e senha') });
     } else {
       res.writeHead(302, { Location: '/login', 'Cache-Control': 'no-store' });
       res.end();

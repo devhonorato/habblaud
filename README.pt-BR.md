@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="client/public/assets/brand/logo-mark@4x.png" width="96" alt="Logo do Habblaud: um pequeno prédio em pixel art" />
+  <img src="client/public/assets/brand/logo-mark@4x.png" width="96" alt="Logo do Atrio: fachada de prédio em pixel art com a porta do átrio em verde-água e janelas acesas" />
 </p>
 
 <h1 align="center">Habblaud</h1>
@@ -37,8 +37,20 @@ moedinhas no jokenpô. Veja em [Vida social](#vida-social).
 Tudo roda na sua máquina, lendo os arquivos que o próprio Claude Code já grava (e só as linhas `alias` do seu shell,
 para dar a letra de cada conta). Nada sai do computador: o Habblaud não lê credenciais nem faz chamadas externas.
 
+## Fork Atrio
+
+Este fork exibe a marca **Atrio**, o servidor de agentes do dono: "o átrio do prédio onde os agentes trabalham". O
+símbolo é a fachada de um prédio em pixel art (contorno grafite, porta do átrio em verde-água, janelas acesas), da
+mesma família do Kairo (grafite e ouro), com o verde-água `#2DD4BF` como única cor de destaque. O nome exibido na
+interface vem de `shared/marca.ts`; as imagens, de `scripts/assets/atrio.py` (`python3 -E scripts/assets/atrio.py`).
+Pacote, rotas, variáveis `HABBLAUD_*`, nomes de arquivo e o Habblaud World continuam com os nomes originais.
+
+O Atrio é baseado no [Habblaud](https://github.com/marmottajr/habblaud), licença MIT. O `LICENSE` original fica neste
+repositório, e o crédito aparece na ajuda (`?` › Sobre) e em Configurações › Sobre.
+
 ## Sumário
 
+- [Fork Atrio](#fork-atrio)
 - [Como é](#como-é)
 - [Instalação](#instalação)
 - [Como usar](#como-usar)

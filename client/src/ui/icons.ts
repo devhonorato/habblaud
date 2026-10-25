@@ -307,42 +307,44 @@ export const ICONS = {
 
 export type IconKey = keyof typeof ICONS;
 
-/** Marca do Habblaud em pixels (usada quando /assets/brand/logo-mark.png não existe): prédio com janelas acesas. */
+/** Marca Atrio em pixels (usada quando /assets/brand/logo-mark.png não existe): fachada com a porta do átrio e janelas acesas. */
 export const FALLBACK_MARK = pixelIcon(
   [
-    '.....######.....',
-    '.....#rrrr#.....',
-    '..############..',
-    '..#llllllllll#..',
-    '..#lwwlwwlbbl#..',
-    '..#lwwlwwlbbl#..',
-    '..#llllllllll#..',
-    '..#lbblwwlwwl#..',
-    '..#lbblwwlwwl#..',
-    '..#llllllllll#..',
-    '..#lwwlddlbbl#..',
-    '..#lwwlddlbbl#..',
-    '..#llllddllll#..',
-    '################',
+    '.OOOOOOOOOOOOOO.',
+    'OhhhhhhhhhhhhhhO',
+    'OFLLLLLLLLLLLLFO',
+    'OFFFFFFFFFFFFFFO',
+    'OFWWFFFFFFFFWWFO',
+    'OFTTFFttttFFTTFO',
+    'OFFFFtTTTTtFFFFO',
+    'OFFFFtWTTTtFFFFO',
+    'OFWWFtTTTTtFWWFO',
+    'OFTTFtTTTTtFTTFO',
+    'OFFFFtTTTTtFFFFO',
+    'OFFFFtTTTTtFFFFO',
+    'OFFFFtTTTTtFFFFO',
+    'OFFFFtTTTTtFFFFO',
+    'OFFFLLLLLLLLFFFO',
+    '.OOOOOOOOOOOOOO.',
   ],
-  { '#': '#2b3550', l: '#dfe6f2', r: '#ff8a5b', w: '#ffd36b', b: '#7cc8ff', d: '#3a4566' },
+  { O: '#18181B', F: '#27272A', h: '#3F3F46', L: '#E4E4E7', W: '#99F6E4', T: '#2DD4BF', t: '#0F766E' },
   'ui-px-icon ui-mark',
 );
 
 /**
- * Logotipo "Habblaud" em pixels, com a mesma fonte bitmap da placa da marca (assets/brand/signage.png, gerada por
- * scripts/assets/pixelart.py): a Pixelify Sans não fica nítida nesse tamanho.
- * c = "Hab" (creme), t = "blaud" (âmbar), s = sombra de 1 px.
+ * Logotipo "atrio" em pixels, com a mesma fonte bitmap da placa da marca (assets/brand/signage.png, gerada por
+ * scripts/assets/atrio.py --wordmark): a Pixelify Sans não fica nítida nesse tamanho.
+ * c = texto (cinza claro), t = pingo do i (verde-água), s = sombra de 1 px.
  */
 export const WORDMARK_ROWS = [
-  'c...c.......c.....t.....tt..................t',
-  'c...c.......c.....t.....st..................t',
-  'c...c..ccc..cccc..tttt...t...ttt..t...t..tttt',
-  'ccccc..sssc.csssc.tssst..t...ssst.t...t.tssst',
-  'csssc..cccc.c...c.t...t..t...tttt.t...t.t...t',
-  'c...c.csssc.c...c.t...t..t..tssst.t...t.t...t',
-  'c...c.scccc.ccccs.tttts.ttt.stttt.stttt.stttt',
-  's...s..ssss.ssss..ssss..sss..ssss..ssss..ssss',
+  '.......c.........t........',
+  '.......cs.........s.......',
+  '.ccc..ccc..c.cc.cc...ccc..',
+  '..ssc..css.cc.ss.cs.c.ssc.',
+  '.ccccs.cs..css...cs.cs..cs',
+  'c.sscs.cs..cs....cs.cs..cs',
+  '.ccccs..cc.cs...ccc..ccc.s',
+  '..ssss...ss.s....sss..sss.',
 ] as const;
 
-export const WORDMARK = pixelIcon(WORDMARK_ROWS, { s: 'rgba(6, 8, 14, 0.62)', c: '#f4f1ea', t: '#fac665' }, 'ui-wordmark');
+export const WORDMARK = pixelIcon(WORDMARK_ROWS, { s: 'rgba(6, 8, 14, 0.62)', c: '#E4E4E7', t: '#2DD4BF' }, 'ui-wordmark');
