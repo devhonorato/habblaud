@@ -203,6 +203,7 @@ export class FeedPanel implements UiComponent {
       h('span', { class: 'ui-feed__room' }),
       h('span', { class: 'ui-feed__icon', attrs: { 'aria-hidden': 'true' } }),
       h('span', { class: 'ui-feed__text' }),
+      h('span', { class: 'ui-feed__erro' }),
     );
     btn.addEventListener('click', () => {
       if (this.ctx.agent(f.agentId)) this.ctx.select({ type: 'agent', id: f.agentId }, { focus: true });
@@ -213,7 +214,7 @@ export class FeedPanel implements UiComponent {
 
   private updateRow(li: HTMLElement, f: FeedItem): void {
     const btn = li.firstElementChild as HTMLElement;
-    const [time, avatar, who, chip, room, icon, text] = btn.children as unknown as HTMLElement[];
+    const [time, avatar, who, chip, room, icon, text, erro] = btn.children as unknown as HTMLElement[];
     const m = this.meta.get(f.agentId);
     setText(time, formatClock(f.activity.at));
     setAttr(time, 'datetime', new Date(f.activity.at).toISOString());
@@ -226,6 +227,9 @@ export class FeedPanel implements UiComponent {
     setText(icon, f.activity.icon);
     setText(text, f.activity.text);
     li.classList.toggle('is-error', !!f.activity.error);
+    const motivo = f.activity.error && f.activity.detail ? f.activity.detail : '';
+    setText(erro, motivo);
+    setHidden(erro, !motivo);
     li.classList.toggle('is-social', f.id.startsWith('social:'));
     // Fim de um shell (✅ terminou / ❌ falhou ou foi interrompido): linha com destaque próprio.
     const done = shellDoneKind(f.activity);

@@ -1993,6 +1993,32 @@
   color: #ff9b8f;
 }
 
+.ui-feed__item.is-error .ui-feed__row:has(.ui-feed__erro:not([hidden])) {
+  height: auto;
+  min-height: 26px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  row-gap: 2px;
+}
+
+.ui-feed__erro {
+  grid-column: 6 / -1;
+}
+
+.ui-tl__erro {
+  grid-column: 2 / -1;
+}
+
+.ui-feed__erro,
+.ui-tl__erro {
+  font-size: 0.85em;
+  line-height: 1.35;
+  color: #ffc4bc;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  opacity: 0.9;
+}
+
 /* ------------------------------------------------------------------ gaveta de detalhes */
 
 .ui-drawer {

@@ -113,17 +113,21 @@ function createTimelineItem(): HTMLElement {
     h('span', { class: 'ui-tl__icon', attrs: { 'aria-hidden': 'true' } }),
     h('span', { class: 'ui-tl__text' }),
     h('time', { class: 'ui-tl__time' }),
+    h('span', { class: 'ui-tl__erro' }),
   );
 }
 
 function updateTimelineItem(li: HTMLElement, a: Activity, now: number, who?: string): void {
-  const [icon, text, time] = li.children as unknown as HTMLElement[];
+  const [icon, text, time, erro] = li.children as unknown as HTMLElement[];
   setText(icon, a.icon);
   setText(text, who ? `${who}: ${a.text}` : a.text);
   setText(time, relativeTime(a.at, now));
   setAttr(time, 'datetime', new Date(a.at).toISOString());
   setTitle(li, `${formatClock(a.at)} · ${a.text}${a.detail ? `\n${a.detail}` : ''}`);
   li.classList.toggle('is-error', !!a.error);
+  const motivo = a.error && a.detail ? a.detail : '';
+  setText(erro, motivo);
+  setHidden(erro, !motivo);
   const done = shellDoneKind(a);
   li.classList.toggle('is-shell-ok', done === 'ok');
   li.classList.toggle('is-shell-fail', done === 'fail');

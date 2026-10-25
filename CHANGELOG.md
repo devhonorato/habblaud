@@ -10,6 +10,8 @@ do meio (0.**3**.0).
 
 ## [Não lançado]
 
+- Erros do Hermes mostram a mensagem inteira numa segunda linha do feed e da linha do tempo do agente, sem depender do tooltip.
+
 ### Adicionado
 
 - **Marca Atrio (fork).** O nome exibido passa a ser Atrio: título da página, logotipo "atrio" em pixels na barra do
