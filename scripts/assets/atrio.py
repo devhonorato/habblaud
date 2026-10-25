@@ -1,16 +1,18 @@
 """Marca Atrio (fork do Habblaud): símbolo, placa da recepção, ícones e og-image em pixel art desenhada à mão.
 
-Atrio é "o átrio do prédio onde os agentes trabalham": fachada vista de frente num quadrado arredondado
-grafite, com a porta em arco verde-água no centro (o átrio) e quatro janelas acesas (agentes trabalhando).
-Grafites neutros e uma única cor de destaque, sem degradê; marca irmã do Kairo (grafite e ouro).
+Atrio é "o átrio do prédio onde os agentes trabalham": um prédio claro visto de frente, com uma torre central de
+vidro verde-água (o átrio, com toldo listrado e porta de entrada no térreo), duas alas creme com janelas acesas em
+amarelo e azul (agentes trabalhando), cornijas âmbar, antena com luz coral no alto e um vaso de planta na ala
+esquerda. Contorno azul-marinho, como o escritório do jogo.
 
 Os tamanhos pequenos (16, 32 e a placa 64x16) são desenhados pixel a pixel; os grandes são ampliações
 NEAREST por inteiro dessas bases. A fonte bitmap é a de `pixelart.py`.
 
-Mapas: O contorno grafite, F fachada, h bisel do alto, K moldura das janelas, L cornija e degrau, l sombra
-deles, W janela acesa e luz do átrio, T porta, t batente e divisão da porta. O mark da placa (11x11) não tem
-contorno escuro porque a chapa já é grafite. O ícone de app é o mark sobre grafite chapado (#09090B, o do
-Kairo), e o logotipo da barra do topo (WORDMARK_ROWS em client/src/ui/icons.ts) sai de `--wordmark`.
+Mapas: O contorno marinho, F parede creme, f sombra da parede, A cornija âmbar, a sombra da cornija, K moldura das
+janelas, Y/y janela acesa quente e sombra, B/b janela azul e sombra, T vidro do átrio, t montante e toldo, W brilho
+do vidro, r luz da antena, R mastro, G/g folhas, p vaso. O mark da placa (11x11) não tem contorno porque a chapa já é
+marinho. Os ícones de app põem o mark sobre o céu do jogo ao entardecer, com estrelas e chão; o logotipo da barra do
+topo (WORDMARK_ROWS em client/src/ui/icons.ts) sai de `--wordmark`, e o FALLBACK_MARK de lá repete MARK_16.
 
 Uso (a partir da raiz do projeto; requer Pillow e numpy):
     python3 -E scripts/assets/atrio.py              # grava assets/brand/**, og-image.png e a marca no manifest
@@ -21,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 from pathlib import Path
 
@@ -34,96 +37,108 @@ ROOT = HERE.parent.parent
 PUBLIC = ROOT / "client" / "public" / "assets"
 
 NAME = "atrio"
+NAME_HEAD, NAME_TAIL = "atr", "io"
 
-GRAPHITE = "#18181B"
-GRAPHITE_2 = "#27272A"
-GRAPHITE_3 = "#3F3F46"
-DEEP = "#09090B"
-LIGHT = "#E4E4E7"
-MUTED = "#71717A"
+NAVY = "#2b3550"
+NAVY_DEEP = "#151c33"
+CREAM = "#f4f1ea"
 TEAL = "#2DD4BF"
 TEAL_DARK = "#0F766E"
 TEAL_LIGHT = "#99F6E4"
+AMBER = "#fac665"
 
 PALETTE: dict[str, str] = {
-    "O": GRAPHITE,
-    "F": GRAPHITE_2,
-    "h": GRAPHITE_3,
-    "K": GRAPHITE,
-    "L": LIGHT,
-    "l": MUTED,
-    "W": TEAL_LIGHT,
+    "O": NAVY,
+    "F": "#f4efe4",
+    "f": "#d6cfc0",
+    "A": AMBER,
+    "a": "#c27a3a",
+    "K": "#3a4566",
+    "Y": "#ffd36b",
+    "y": "#f2a93b",
+    "B": "#7cc8ff",
+    "b": "#3f8fd6",
     "T": TEAL,
     "t": TEAL_DARK,
+    "W": TEAL_LIGHT,
+    "r": "#ff8a5b",
+    "R": "#b8c2d6",
+    "G": "#67c53d",
+    "g": "#198834",
+    "p": "#b05b39",
 }
 
 MARK_32 = [
-    "..OOOOOOOOOOOOOOOOOOOOOOOOOOOO..",
-    ".OhhhhhhhhhhhhhhhhhhhhhhhhhhhhO.",
-    "OFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFO",
-    "OFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFO",
-    "OFFLLLLLLLLLLLLLLLLLLLLLLLLLLFFO",
-    "OFFllllllllllllllllllllllllllFFO",
-    "OFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFO",
-    "OFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFO",
-    "OFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFO",
-    "OFFFKKKKKKFFFFFFFFFFFFKKKKKKFFFO",
-    "OFFFKWWWWKFFFttttttFFFKWWWWKFFFO",
-    "OFFFKWWWWKFFttttttttFFKWWWWKFFFO",
-    "OFFFKTTTTKFttTTTTTTttFKTTTTKFFFO",
-    "OFFFKKKKKKFtTWWTTTTTtFKKKKKKFFFO",
-    "OFFFFFFFFFFtTWWTTTTTtFFFFFFFFFFO",
-    "OFFFFFFFFFFtTWTTTTTTtFFFFFFFFFFO",
-    "OFFFFFFFFFFtTTTTTTTTtFFFFFFFFFFO",
-    "OFFFKKKKKKFtTTTTTTTTtFKKKKKKFFFO",
-    "OFFFKWWWWKFtTTTttTTTtFKWWWWKFFFO",
-    "OFFFKWWWWKFtTTTttTTTtFKWWWWKFFFO",
-    "OFFFKTTTTKFtTTTttTTTtFKTTTTKFFFO",
-    "OFFFKKKKKKFtTTTttTTTtFKKKKKKFFFO",
-    "OFFFFFFFFFFtTTTttTTTtFFFFFFFFFFO",
-    "OFFFFFFFFFFtTTTttTTTtFFFFFFFFFFO",
-    "OFFFFFFFFFFtTTTttTTTtFFFFFFFFFFO",
-    "OFFFFFFFFFFtTTTttTTTtFFFFFFFFFFO",
-    "OFFFFFFFFFFtTTTttTTTtFFFFFFFFFFO",
-    "OFFFFFFFFFFtTTTttTTTtFFFFFFFFFFO",
-    "OFFFFFFFLLLLLLLLLLLLLLLLFFFFFFFO",
-    "OFFFFFFFllllllllllllllllFFFFFFFO",
-    ".OFFFFFFFFFFFFFFFFFFFFFFFFFFFFO.",
-    "..OOOOOOOOOOOOOOOOOOOOOOOOOOOO..",
+    "...............rr...............",
+    "...............RR...............",
+    "...............OO...............",
+    "...........OOOOOOOOOO...........",
+    ".....GG....OAAAAAAAAO...........",
+    "....GGGG...OaaaaaaaaO...........",
+    "...GgGGgG..OFFFFFFFfO...........",
+    "....paap...OFTTWWTTfO...........",
+    "....pppp...OFTWWTTTfO...........",
+    ".OOOOOOOOOOOFWWTTTTfOOOOOOOOOOO.",
+    ".OAAAAAAAAAOFWTTTTTfOAAAAAAAAAO.",
+    ".OaaaaaaaaaOFTTTTTTfOaaaaaaaaaO.",
+    ".OFFFFFFFFfOFttttttfOFFFFFFFFfO.",
+    ".OFFFFFFFFfOFTTWWTTfOFFFFFFFFfO.",
+    ".OFKKKKKKKfOFTWWTTTfOFKKKKKKKfO.",
+    ".OFKYYKYYKfOFWWTTTTfOFKBBKYYKfO.",
+    ".OFKYYKYYKfOFWTTTTTfOFKBBKYYKfO.",
+    ".OFKyyKyyKfOFTTTTTTfOFKbbKyyKfO.",
+    ".OFKKKKKKKfOFttttttfOFKKKKKKKfO.",
+    ".OFFFFFFFFfOFTTWWTTfOFFFFFFFFfO.",
+    ".OFFFFFFFFfOFTWWTTTfOFFFFFFFFfO.",
+    ".OAAAAAAAAAOFWWTTTTfOAAAAAAAAAO.",
+    ".OaaaaaaaaaOFWTTTTTfOaaaaaaaaaO.",
+    ".OFFFFFFFFfOOOOOOOOOOFFFFFFFFfO.",
+    ".OFKKKKKKKfOTWTWTWTWOFKKKKKKKfO.",
+    ".OFKBBKYYKfOttttttttOFKYYKYYKfO.",
+    ".OFKBBKYYKfOFOOOOOOfOFKYYKYYKfO.",
+    ".OFKbbKyyKfOFOFttFOfOFKyyKyyKfO.",
+    ".OFKKKKKKKfOFOWttWOfOFKKKKKKKfO.",
+    ".OFFFFFFFFfOFOWttWOfOFFFFFFFFfO.",
+    ".OFFFFFFFFfOFOWttWOfOFFFFFFFFfO.",
+    ".OOOOOOOOOOOOOOOOOOOOOOOOOOOOOO.",
 ]
 
 MARK_16 = [
-    ".OOOOOOOOOOOOOO.",
-    "OhhhhhhhhhhhhhhO",
-    "OFLLLLLLLLLLLLFO",
-    "OFFFFFFFFFFFFFFO",
-    "OFWWFFFFFFFFWWFO",
-    "OFTTFFttttFFTTFO",
-    "OFFFFtTTTTtFFFFO",
-    "OFFFFtWTTTtFFFFO",
-    "OFWWFtTTTTtFWWFO",
-    "OFTTFtTTTTtFTTFO",
-    "OFFFFtTTTTtFFFFO",
-    "OFFFFtTTTTtFFFFO",
-    "OFFFFtTTTTtFFFFO",
-    "OFFFFtTTTTtFFFFO",
-    "OFFFLLLLLLLLFFFO",
-    ".OOOOOOOOOOOOOO.",
+    ".......rr.......",
+    ".......OO.......",
+    ".....OOOOOO.....",
+    "..GG.OAAAAO.....",
+    "..pp.OTWWTO.....",
+    "OOOOOOWWTTOOOOOO",
+    "OAAAAOWTTTOAAAAO",
+    "OFFFFOttttOFFFFO",
+    "OFYYFOTWTTOFBBFO",
+    "OFyyFOWTTTOFbbFO",
+    "OaaaaOttttOaaaaO",
+    "OFFFFOFWWFOFFFFO",
+    "OFBBFOFWWFOFYYFO",
+    "OFbbFOFWWFOFyyFO",
+    "OFFFFOFWWFOFFFFO",
+    "OOOOOOOOOOOOOOOO",
 ]
 
 SIGN_MARK = [
-    ".hhhhhhhhh.",
-    "hLLLLLLLLLh",
-    "hhhhhhhhhhh",
-    "hWWhttthWWh",
-    "hTTtTTTtTTh",
-    "hhhtWTTthhh",
-    "hWWtTTTtWWh",
-    "hTTtTTTtTTh",
-    "hhhtTTTthhh",
-    "hhhtTTTthhh",
-    ".hLLLLLLLh.",
+    ".....r.....",
+    "...AAAAA...",
+    "...WTTTT...",
+    "AAAWWTTTAAA",
+    "FYFTWTTTFBF",
+    "FyFtttttFbF",
+    "FFFTTWTTFFF",
+    "FBFTWTTTFYF",
+    "FbFtttttFyF",
+    "FFFFWtWFFFF",
+    "aaaaWtWaaaa",
 ]
+
+SKY = ["#141a33", "#1b2244", "#232a55", "#2e3263", "#3d3a6e", "#523f78", "#6d4680", "#8f4f83", "#b45c7e", "#d97474", "#f3966a"]
+GROUND, GROUND_TOP = "#1f2640", "#3a4566"
+STAR, STAR_DIM = "#f4f1ea", "#8f9bc0"
 
 
 def mark(size: int) -> Image.Image:
@@ -134,22 +149,18 @@ def mark(size: int) -> Image.Image:
     raise ValueError(f"mark desenhado só existe em 16 e 32 px (pedido: {size})")
 
 
-def _i_dot(x: int, y: int) -> tuple[int, int]:
-    ix = x + art.text_width("atr") + 1
-    return ix + art.FONT["i"][0].index("#"), y
-
-
-def _wordmark(img: Image.Image, x: int, y: int) -> None:
-    art.draw_text(img, x + 1, y + 1, NAME, DEEP)
-    art.draw_text(img, x, y, NAME, LIGHT)
-    img.putpixel(_i_dot(x, y), art.hex_rgba(TEAL))
+def _wordmark(img: Image.Image, x: int, y: int, shadow: str = NAVY_DEEP) -> None:
+    tail_x = x + art.text_width(NAME_HEAD) + 1
+    art.draw_text(img, x + 1, y + 1, NAME, shadow)
+    art.draw_text(img, x, y, NAME_HEAD, CREAM)
+    art.draw_text(img, tail_x, y, NAME_TAIL, TEAL)
 
 
 def signage() -> Image.Image:
     w, h = 64, 16
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     p = img.load()
-    outline, top, face, bottom = (art.hex_rgba(c) for c in (DEEP, GRAPHITE_2, GRAPHITE, "#111113"))
+    outline, top, face, bottom = (art.hex_rgba(c) for c in ("#1c2541", "#3a4a70", "#2a3656", "#222b47"))
     for y in range(h):
         for x in range(w):
             if x in (0, w - 1) and y in (0, h - 1):
@@ -163,60 +174,77 @@ def signage() -> Image.Image:
             else:
                 p[x, y] = face
     for sx in (3, w - 4):
-        p[sx, 7] = art.hex_rgba(MUTED)
-        p[sx, 8] = art.hex_rgba(GRAPHITE_3)
+        p[sx, 7] = art.hex_rgba("#c9d3e3")
+        p[sx, 8] = art.hex_rgba("#7d8aa3")
     sym = art.render_map(SIGN_MARK, PALETTE)
     gap = 4
     x0 = (w - (sym.width + gap + art.text_width(NAME))) // 2
     img.alpha_composite(sym, (x0, 3))
-    _wordmark(img, x0 + sym.width + gap, 6)
+    _wordmark(img, x0 + sym.width + gap, 5)
     return img
 
 
 def wordmark_rows() -> list[str]:
     w, h = art.text_width(NAME) + 1, art.CAP_HEIGHT + 1
     grid = [["."] * w for _ in range(h)]
-    for offset, ch in ((1, "s"), (0, "c")):
+    head = len(NAME_HEAD)
+    for offset in (1, 0):
         x = offset
-        for letter in NAME:
+        for i, letter in enumerate(NAME):
             glyph = art.FONT[letter]
+            ch = "s" if offset else ("c" if i < head else "t")
             for gy in range(art.CAP_HEIGHT):
                 for gx, bit in enumerate(glyph[gy]):
                     if bit == "#":
                         grid[gy + offset][x + gx] = ch
             x += len(glyph[0]) + 1
-    ix, iy = _i_dot(0, 0)
-    grid[iy][ix] = "t"
     return ["".join(r) for r in grid]
 
 
+def sky(w: int, h: int, horizon: int, seed: int = 7) -> Image.Image:
+    """Céu do jogo ao entardecer em faixas chapadas (sem degradê), estrelas no alto e chão a partir de `horizon`."""
+    img = Image.new("RGBA", (w, h), art.hex_rgba(GROUND))
+    p = img.load()
+    for y in range(horizon):
+        band = min(len(SKY) - 1, y * len(SKY) // horizon)
+        color = art.hex_rgba(SKY[band])
+        for x in range(w):
+            p[x, y] = color
+    for x in range(w):
+        p[x, horizon] = art.hex_rgba(GROUND_TOP)
+    rng = random.Random(seed)
+    for _ in range(max(4, w * horizon // 600)):
+        x, y = rng.randrange(w), rng.randrange(max(1, horizon * 5 // 11))
+        p[x, y] = art.hex_rgba(STAR if rng.random() < 0.4 else STAR_DIM)
+    return img
+
+
 def app_icon(base: int, factor: int, mark_scale: int = 1) -> Image.Image:
-    scene = Image.new("RGBA", (base, base), art.hex_rgba(DEEP))
     m = px.upscale(mark(32), mark_scale)
-    scene.alpha_composite(m, ((base - m.width) // 2, (base - m.height) // 2))
+    ground = max(4, base // 10)
+    scene = sky(base, base, base - ground)
+    scene.alpha_composite(m, ((base - m.width) // 2, base - ground - m.height + mark_scale))
     return px.upscale(scene, factor)
 
 
 def og_image() -> Image.Image:
     w, h = 600, 315
-    og = Image.new("RGBA", (w, h), art.hex_rgba(GRAPHITE))
-    teal = art.hex_rgba(TEAL)
-    for x in range(w):
-        og.putpixel((x, h - 6), teal)
-        og.putpixel((x, h - 5), teal)
+    horizon = h - 34
+    og = sky(w, h, horizon, seed=11)
     m = px.upscale(mark(32), 6)
-    mx, my = 48, (h - m.height) // 2 - 4
+    mx, my = 56, horizon - m.height + 6
     og.alpha_composite(m, (mx, my))
-    tx = mx + m.width + 40
+    tx = mx + m.width + 44
     title = Image.new("RGBA", (art.text_width(NAME) + 1, art.CELL_HEIGHT + 1), (0, 0, 0, 0))
     _wordmark(title, 0, 0)
-    og.alpha_composite(px.upscale(title, 8), (tx, my + 8))
+    ty = 56
+    og.alpha_composite(px.upscale(title, 8), (tx, ty))
     lines = ["Seus agentes trabalhando,", "ao vivo, num prédio", "em pixel art."]
     for i, line in enumerate(lines):
-        img = art.text_image(line, "#A1A1AA", 2)
+        img = art.text_image(line, CREAM, 2, NAVY_DEEP)
         if tx + img.width > w - 12:
             raise ValueError(f"linha do og-image larga demais: {line!r}")
-        og.alpha_composite(img, (tx, my + 100 + i * 22))
+        og.alpha_composite(img, (tx, ty + 96 + i * 22))
     return px.upscale(og, 2).convert("RGB")
 
 

@@ -307,44 +307,47 @@ export const ICONS = {
 
 export type IconKey = keyof typeof ICONS;
 
-/** Marca Atrio em pixels (usada quando /assets/brand/logo-mark.png não existe): fachada com a porta do átrio e janelas acesas. */
+/**
+ * Marca Atrio em pixels (usada quando /assets/brand/logo-mark.png não existe): prédio claro com a torre de vidro
+ * verde-água do átrio, janelas acesas, antena e planta. Mesmo desenho de MARK_16 em scripts/assets/atrio.py.
+ */
 export const FALLBACK_MARK = pixelIcon(
   [
-    '.OOOOOOOOOOOOOO.',
-    'OhhhhhhhhhhhhhhO',
-    'OFLLLLLLLLLLLLFO',
-    'OFFFFFFFFFFFFFFO',
-    'OFWWFFFFFFFFWWFO',
-    'OFTTFFttttFFTTFO',
-    'OFFFFtTTTTtFFFFO',
-    'OFFFFtWTTTtFFFFO',
-    'OFWWFtTTTTtFWWFO',
-    'OFTTFtTTTTtFTTFO',
-    'OFFFFtTTTTtFFFFO',
-    'OFFFFtTTTTtFFFFO',
-    'OFFFFtTTTTtFFFFO',
-    'OFFFFtTTTTtFFFFO',
-    'OFFFLLLLLLLLFFFO',
-    '.OOOOOOOOOOOOOO.',
+    '.......rr.......',
+    '.......OO.......',
+    '.....OOOOOO.....',
+    '..GG.OAAAAO.....',
+    '..pp.OTWWTO.....',
+    'OOOOOOWWTTOOOOOO',
+    'OAAAAOWTTTOAAAAO',
+    'OFFFFOttttOFFFFO',
+    'OFYYFOTWTTOFBBFO',
+    'OFyyFOWTTTOFbbFO',
+    'OaaaaOttttOaaaaO',
+    'OFFFFOFWWFOFFFFO',
+    'OFBBFOFWWFOFYYFO',
+    'OFbbFOFWWFOFyyFO',
+    'OFFFFOFWWFOFFFFO',
+    'OOOOOOOOOOOOOOOO',
   ],
-  { O: '#18181B', F: '#27272A', h: '#3F3F46', L: '#E4E4E7', W: '#99F6E4', T: '#2DD4BF', t: '#0F766E' },
+  { O: '#2b3550', F: '#f4efe4', A: '#fac665', a: '#c27a3a', Y: '#ffd36b', y: '#f2a93b', B: '#7cc8ff', b: '#3f8fd6', T: '#2DD4BF', t: '#0F766E', W: '#99F6E4', r: '#ff8a5b', G: '#67c53d', p: '#b05b39' },
   'ui-px-icon ui-mark',
 );
 
 /**
  * Logotipo "atrio" em pixels, com a mesma fonte bitmap da placa da marca (assets/brand/signage.png, gerada por
  * scripts/assets/atrio.py --wordmark): a Pixelify Sans não fica nítida nesse tamanho.
- * c = texto (cinza claro), t = pingo do i (verde-água), s = sombra de 1 px.
+ * c = "atr" (creme), t = "io" (verde-água), s = sombra de 1 px.
  */
 export const WORDMARK_ROWS = [
   '.......c.........t........',
   '.......cs.........s.......',
-  '.ccc..ccc..c.cc.cc...ccc..',
-  '..ssc..css.cc.ss.cs.c.ssc.',
-  '.ccccs.cs..css...cs.cs..cs',
-  'c.sscs.cs..cs....cs.cs..cs',
-  '.ccccs..cc.cs...ccc..ccc.s',
+  '.ccc..ccc..c.cc.tt...ttt..',
+  '..ssc..css.cc.ss.ts.t.sst.',
+  '.ccccs.cs..css...ts.ts..ts',
+  'c.sscs.cs..cs....ts.ts..ts',
+  '.ccccs..cc.cs...ttt..ttt.s',
   '..ssss...ss.s....sss..sss.',
 ] as const;
 
-export const WORDMARK = pixelIcon(WORDMARK_ROWS, { s: 'rgba(6, 8, 14, 0.62)', c: '#E4E4E7', t: '#2DD4BF' }, 'ui-wordmark');
+export const WORDMARK = pixelIcon(WORDMARK_ROWS, { s: 'rgba(6, 8, 14, 0.62)', c: '#f4f1ea', t: '#2DD4BF' }, 'ui-wordmark');

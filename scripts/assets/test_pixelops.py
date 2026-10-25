@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 
 import numpy as np
@@ -97,7 +98,23 @@ class AtrioTest(unittest.TestCase):
         self.assertEqual(atrio.signage().size, (64, 16))
         rows = atrio.wordmark_rows()
         self.assertEqual(len(rows), pixelart.CAP_HEIGHT + 1)
-        self.assertEqual("".join(rows).count("t"), 1)
+        self.assertEqual({len(r) for r in rows}, {pixelart.text_width(atrio.NAME) + 1})
+        tail_x = pixelart.text_width(atrio.NAME_HEAD) + 1
+        for row in rows[:-1]:
+            self.assertNotIn("t", row[:tail_x])
+            self.assertNotIn("c", row[tail_x:])
+        self.assertIn("t", "".join(rows))
+
+    def test_icons_ts_espelha_o_script(self) -> None:
+        source = (atrio.ROOT / "client" / "src" / "ui" / "icons.ts").read_text(encoding="utf-8")
+
+        def rows_of(name: str) -> list[str]:
+            block = re.search(rf"export const {name} = [^\[]*\[(.*?)\]", source, re.S)
+            self.assertIsNotNone(block, name)
+            return re.findall(r"'([^']*)'", block.group(1))
+
+        self.assertEqual(rows_of("WORDMARK_ROWS"), atrio.wordmark_rows())
+        self.assertEqual(rows_of("FALLBACK_MARK"), atrio.MARK_16)
 
     def test_icones_e_og(self) -> None:
         self.assertEqual(atrio.app_icon(45, 4).size, (180, 180))
