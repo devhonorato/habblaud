@@ -37,7 +37,7 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
-import { hermesAgentNames, hermesLinks, hermesReadingDays, hermesRoomNames, hermesWeather } from './sources/hermes/config';
+import { hermesAgentNames, hermesExtraAgents, hermesLinks, hermesReadingDays, hermesRoomNames, hermesWeather } from './sources/hermes/config';
 import { ReadingStore } from './sources/hermes/readings';
 import { HermesSource } from './sources/hermes/source';
 import { createBuildReader, readBuildInfo } from './build';
@@ -147,7 +147,8 @@ const codexLive: CodexLive | undefined = codex;
 // Hermes Agent (sources/hermes/): só com HABBLAUD_HERMES_DIR, o diretório de dados dele (somente leitura). Cada perfil
 // vira uma sala com um agente permanente. As cópias dos bancos (quando não dá para lê-los no lugar) e o histórico das
 // leituras do Vigia ficam no dataDir. HABBLAUD_HERMES_SALAS dá o nome padrão da sala (o "Renomear" vale por cima) e
-// HABBLAUD_HERMES_NOMES o dos agentes (o personagem do editor vale por cima).
+// HABBLAUD_HERMES_NOMES o dos agentes (o personagem do editor vale por cima); HABBLAUD_HERMES_AGENTES põe um agente a
+// mais na sala para as sessões de uma rotina.
 const hermesReadings = config.hermesDir
   ? new ReadingStore({ dir: join(config.dataDir, 'hermes-leituras'), days: hermesReadingDays(process.env), hermesDir: config.hermesDir })
   : undefined;
@@ -163,6 +164,7 @@ const hermes = config.hermesDir
       roomNames: hermesRoomNames(process.env),
       setRoomName: (path, name) => roomAliases.setDefault(path, name),
       agentNames: hermesAgentNames(process.env),
+      extraAgents: hermesExtraAgents(process.env),
       readings: hermesReadings,
     })
   : undefined;

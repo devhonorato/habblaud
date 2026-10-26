@@ -48,8 +48,9 @@ describe('painel do Hermes (cliente)', () => {
   });
 
   it('perfil de um agente (principal ou Vigia) e a busca do painel', async () => {
-    const panel = { profiles: [{ name: 'crypto', agentId: 'hermes:crypto', jobs: [{ id: 'j', vigiaId: 'hermes:crypto:vigia:j' }] }] } as unknown as HermesPanel;
+    const panel = { profiles: [{ name: 'crypto', agentId: 'hermes:crypto', jobs: [{ id: 'j', vigiaId: 'hermes:crypto:vigia:j' }, { id: 'k', agentId: 'hermes:crypto:agente:k' }] }] } as unknown as HermesPanel;
     expect(profileOfAgent(panel, 'hermes:crypto:vigia:j')?.name).toBe('crypto');
+    expect(profileOfAgent(panel, 'hermes:crypto:agente:k')?.name).toBe('crypto');
     expect(profileOfAgent(null, 'x')).toBeUndefined();
     const ok = (async () => ({ ok: true, json: async () => panel })) as unknown as typeof fetch;
     expect(await fetchHermesPanel(ok)).toBe(panel);

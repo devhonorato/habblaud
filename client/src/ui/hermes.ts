@@ -437,7 +437,7 @@ export class HermesDialog implements UiComponent {
           h(
             'div',
             { class: 'ui-hp__job' },
-            h('div', {}, h('b', { text: j.name }), ' ', st, ' ', this.agentButton(j.vigiaId, tr('Ver o Vigia'))),
+            h('div', {}, h('b', { text: j.name }), ' ', st, ' ', this.agentButton(j.vigiaId, tr('Ver o Vigia')), ' ', this.agentButton(j.agentId, tr('Ver o agente'))),
             h('div', { class: 'ui-hp__note', text: line }),
             j.lastError ? h('div', { class: 'ui-hp__mono is-crit', text: j.lastError }) : null,
           ),

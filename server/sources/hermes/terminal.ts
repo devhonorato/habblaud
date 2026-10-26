@@ -3,7 +3,8 @@
 // - HermesConversation: mensagens do state.db em TerminalEntry (pedido, raciocínio, ferramentas com argumentos e
 //   resultado sem o envelope <untrusted_tool_result>, resposta final), com um cabeçalho por sessão;
 // - cronOutputEntries: uma saída do cron em TerminalEntry (para as rodadas que não estão mais no banco);
-// - MainFeed: o terminal do agente principal de um perfil (o banco e, antes dele, as saídas do cron);
+// - MainFeed: o terminal do agente principal de um perfil (o banco e, antes dele, as saídas do cron) ou de um agente
+//   adicional (HABBLAUD_HERMES_AGENTES: só as sessões da rotina dele);
 // - SessionFeed: uma sessão só (histórico do terminal);
 // - VigiaFeed: o terminal do Vigia (cada checagem do monitor e a última leitura completa).
 // Todos implementam TerminalFeed (sources/source.ts): init com a conversa recente e, depois, só o que é novo.
@@ -327,6 +328,40 @@ export interface ProfileFeedDeps {
   /** Pasta do perfil. */
   dir: string;
   jobs: () => readonly CronJob[];
+  /** Que sessões do cron entram (ausente = todas). Relido a cada consulta: os agentes adicionais podem mudar. */
+  scope?: () => FeedScope;
+}
+
+/**
+ * Sessões do terminal por rotina: `only` = só as da rotina (e as filhas delas), o terminal de um agente adicional;
+ * `exclude` = todas menos as dessas rotinas, o terminal do principal.
+ */
+export interface FeedScope {
+  only?: string;
+  exclude?: readonly string[];
+}
+
+/** A rotina entra no terminal (as saídas do cron em arquivo). */
+function inScope(scope: FeedScope | undefined, jobId: string): boolean {
+  if (scope?.only) return jobId === scope.only;
+  return !scope?.exclude?.includes(jobId);
+}
+
+/** Filtro SQL (" AND ...") das mensagens pelo escopo; as sessões filhas seguem a sessão mãe. */
+export function scopeClause(scope: FeedScope | undefined, withParent: boolean): { sql: string; params: Array<string | number> } {
+  const one = (jobId: string) => {
+    const prefix = `cron_${jobId}_`;
+    return withParent
+      ? { sql: '(substr(session_id, 1, ?) = ? OR session_id IN (SELECT id FROM sessions WHERE substr(parent_session_id, 1, ?) = ?))', params: [prefix.length, prefix, prefix.length, prefix] }
+      : { sql: 'substr(session_id, 1, ?) = ?', params: [prefix.length, prefix] };
+  };
+  if (scope?.only) {
+    const c = one(scope.only);
+    return { sql: ` AND ${c.sql}`, params: c.params };
+  }
+  const ex = (scope?.exclude ?? []).map(one);
+  if (!ex.length) return { sql: '', params: [] };
+  return { sql: ` AND NOT (${ex.map((c) => c.sql).join(' OR ')})`, params: ex.flatMap((c) => c.params) };
 }
 
 function messageColumns(db: SqliteDatabase): string {
@@ -348,7 +383,8 @@ function num(v: unknown): number | undefined {
 
 /**
  * Terminal do agente principal de um perfil: no init, as rodadas do cron que já não estão no banco (pelas saídas em
- * cron/output) e as últimas FEED_INIT_MESSAGES mensagens do state.db; depois, as mensagens novas.
+ * cron/output) e as últimas FEED_INIT_MESSAGES mensagens do state.db; depois, as mensagens novas. Com `scope`, só as
+ * sessões (e saídas) das rotinas dele: o principal sem as dos agentes adicionais, um agente adicional só com as dele.
  */
 export class MainFeed implements TerminalFeed {
   readonly intervalMs = 1_000;
@@ -365,6 +401,10 @@ export class MainFeed implements TerminalFeed {
 
   private jobName = (id: string) => this.deps.jobs().find((j) => j.id === id)?.name;
 
+  private clause(scope: FeedScope | undefined): { sql: string; params: Array<string | number> } {
+    return scopeClause(scope, !!this.cols?.sessions.split(', ').includes('parent_session_id'));
+  }
+
   load(limit: number): TerminalFeedInit {
     this.conv = new HermesConversation(this.jobName);
     this.cursor = -1;
@@ -373,30 +413,34 @@ export class MainFeed implements TerminalFeed {
     let truncated = false;
     let firstDbAt = Infinity;
     const db = this.deps.state;
+    const scope = this.deps.scope?.();
     if (db?.exists()) {
       this.sig = db.signature();
       db.read((d) => {
         this.cols ??= { messages: messageColumns(d), sessions: sessionColumns(d) };
         const max = num((d.prepare('SELECT max(id) AS m FROM messages').get() as { m?: unknown } | undefined)?.m) ?? 0;
         const want = this.opts.initMessages ?? FEED_INIT_MESSAGES;
-        const from = Math.max(0, max - want);
-        truncated = from > 0;
-        const rows = d.prepare(`SELECT ${this.cols.messages} FROM messages WHERE id > ? ORDER BY id`).all(from) as unknown as ConvMessage[];
+        const c = this.clause(scope);
+        const rows = (d.prepare(`SELECT ${this.cols.messages} FROM messages WHERE 1 = 1${c.sql} ORDER BY id DESC LIMIT ${want}`).all(...c.params) as unknown as ConvMessage[]).reverse();
+        const cut = rows.length >= want;
+        truncated = cut;
         this.loadSessions(d, rows);
         // Começa no início de uma sessão: a janela não corta uma rotina ao meio (as anteriores ficam com as saídas).
         const firstUser = rows.findIndex((r) => r.role === 'user');
-        const start = from > 0 && firstUser > 0 ? firstUser : 0;
+        const start = cut && firstUser > 0 ? firstUser : 0;
         for (const r of rows.slice(start)) {
           const ms = msOf(r.timestamp);
           if (ms !== undefined) firstDbAt = Math.min(firstDbAt, ms);
           fromDb.push(...this.conv.push(r, this.sessions.get(r.session_id)));
         }
-        this.cursor = rows.length ? (num(rows[rows.length - 1].id) ?? max) : max;
+        // O cursor vai ao fim do banco: as mensagens de fora do escopo não voltam no poll.
+        this.cursor = max;
       });
     }
     // Rodadas mais antigas que a janela do banco (ou todas, se o banco não abriu): as saídas do cron.
     const fromFiles: TerminalEntry[] = [];
     for (const job of this.deps.jobs()) {
+      if (!inScope(scope, job.id)) continue;
       for (const f of listOutputs(join(this.deps.dir, 'cron', 'output', job.id), this.opts.outputs ?? FEED_OUTPUTS)) {
         if (f.at >= firstDbAt) continue;
         const text = readSmall(f.path);
@@ -428,10 +472,12 @@ export class MainFeed implements TerminalFeed {
     const sig = db.signature();
     if (sig === this.sig) return [];
     const out: TerminalEntry[] = [];
+    const scope = this.deps.scope?.();
     const ok = db.read((d) => {
       this.cols ??= { messages: messageColumns(d), sessions: sessionColumns(d) };
+      const c = this.clause(scope);
       for (let i = 0; i < 5; i++) {
-        const rows = d.prepare(`SELECT ${this.cols.messages} FROM messages WHERE id > ? ORDER BY id LIMIT ${FEED_BATCH}`).all(this.cursor) as unknown as ConvMessage[];
+        const rows = d.prepare(`SELECT ${this.cols.messages} FROM messages WHERE id > ?${c.sql} ORDER BY id LIMIT ${FEED_BATCH}`).all(this.cursor, ...c.params) as unknown as ConvMessage[];
         if (!rows.length) break;
         // Sessões novas e as que terminaram (ended_at muda): relidas.
         for (const r of rows) if (r.role === 'assistant' && r.finish_reason === 'stop') this.sessions.delete(r.session_id);

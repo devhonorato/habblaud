@@ -3491,4 +3491,10 @@ export const FR: Readonly<Record<string, string>> = {
   "Diferença para a leitura anterior:": "Différence avec la lecture précédente :",
   "Leitura completa ({0}, igual à anterior):": "Lecture complète ({0}, identique à la précédente) :",
   "Leitura completa ({0}):": "Lecture complète ({0}) :",
+
+  // HABBLAUD_HERMES_AGENTES (agentes adicionais)
+  "Analista": "Analyste",
+  "Agente da rotina {0}": "Agent de la routine {0}",
+  "Ver o agente": "Voir l'agent",
+  "Hermes: a rotina {0} do perfil {1} não está no jobs.json; o agente {2} não entra.": "Hermes : la routine {0} du profil {1} n'est pas dans jobs.json ; l'agent {2} n'entre pas.",
 };

@@ -2,15 +2,15 @@
 // conexão de escrita aberta, como o Hermes rodando), o AccountsService e o Office. Nada da amostra real entra aqui.
 import { chmodSync, mkdirSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentInfo } from '../../../shared/types';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AgentInfo, TerminalEntry } from '../../../shared/types';
 import { AccountsService } from '../../accounts/service';
-import { setQuiet } from '../../log';
+import { log, setQuiet } from '../../log';
 import { NameStore } from '../../model/names';
 import { Office } from '../../model/office';
 import { tempDir } from '../../test/fixtures';
 import { RoomAliases } from '../../model/room-aliases';
-import { hermesAgentNames, hermesRoomNames } from './config';
+import { hermesAgentNames, hermesExtraAgents, hermesRoomNames } from './config';
 import { ReadingStore } from './readings';
 import { HermesSource, HEARTBEAT_STALE_MS, WORKING_RECENT_MS, type HermesSourceOptions } from './source';
 import { loadSqlite, ReadOnlyDb, type SqliteDatabase } from './sqlite';
@@ -57,7 +57,7 @@ CREATE TABLE executions (id TEXT PRIMARY KEY, job_id TEXT NOT NULL, source TEXT 
 
 const JOB = '6099beb48bf4';
 
-function setup(extra: Partial<Pick<HermesSourceOptions, 'roomNames' | 'agentNames' | 'readings'>> & { names?: NameStore } = {}) {
+function setup(extra: Partial<Pick<HermesSourceOptions, 'roomNames' | 'agentNames' | 'readings' | 'extraAgents'>> & { names?: NameStore } = {}) {
   const tmp = tempDir('habblaud-hermes-');
   cleanups.push(tmp.cleanup);
   const root = tmp.dir;
@@ -635,5 +635,188 @@ describe('fonte do Hermes: histórico das leituras do Vigia', () => {
     expect(detail(2)).toContain('+radar BBBUSDT nota~85 4h');
     expect(detail(2)).toContain('Leitura completa');
 
+  });
+});
+
+describe('fonte do Hermes: agentes adicionais (HABBLAUD_HERMES_AGENTES)', () => {
+  const ANALYST = 'a1b2c3d4e5f6';
+  const jobsWith = (h: ReturnType<typeof setup>, extra: Array<Record<string, unknown>> = []) =>
+    writeFileSync(
+      join(h.crypto, 'cron', 'jobs.json'),
+      JSON.stringify({
+        jobs: [
+          { id: JOB, name: 'vigia-mercado', enabled: true, schedule_display: 'every 5m', monitor_script: 'v.py' },
+          { id: ANALYST, name: 'analista-mercado', enabled: true, schedule_display: 'every 1d', last_status: 'ok', last_run_at: '2026-10-22T17:00:00+00:00' },
+          ...extra,
+        ],
+      }),
+    );
+  const env = { HABBLAUD_HERMES_AGENTES: 'crypto/analista-mercado=Analista:f' };
+  const aid = `hermes:crypto:agente:${ANALYST}`;
+  const running = (h: ReturnType<typeof setup>, id: string, agoMs: number) =>
+    h.execs
+      .prepare('INSERT INTO executions (id, job_id, source, process_id, pid, status, claimed_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .all(id, ANALYST, 'builtin', 'p', 1, 'running', new Date(T0 - agoMs).toISOString(), new Date(T0 - agoMs).toISOString());
+  const texts = (entries: readonly TerminalEntry[]) => entries.map((e) => ('text' in e ? (e.text ?? '') : '')).join('\n');
+
+  it('a rotina configurada ganha um personagem permanente na sala, com o papel e o título dela', () => {
+    const h = setup({ extraAgents: hermesExtraAgents(env) });
+    jobsWith(h);
+    h.source.boot();
+    const main = h.agent('hermes:crypto')!;
+    expect(h.agent(aid)).toMatchObject({ kind: 'main', provider: 'hermes', name: 'Analista', look: 'f', role: 'Analista', roomId: main.roomId, status: 'idle', title: 'Rotina: analista-mercado (every 1d)' });
+    // o Vigia continua com a rotina com monitor
+    expect(h.agent(`hermes:crypto:vigia:${JOB}`)).toMatchObject({ name: 'Vigia' });
+    expect(h.source.panel().profiles.find((p) => p.name === 'crypto')!.jobs.find((j) => j.id === ANALYST)).toMatchObject({ agentId: aid });
+    // não sai entre uma execução e outra
+    h.advance(3600_000);
+    h.beat();
+    h.poll();
+    expect(h.agent(aid)).toBeDefined();
+  });
+
+  it('execução da rotina rodando (mesma regra de settle) deixa o adicional working, não o principal', () => {
+    const h = setup({ extraAgents: hermesExtraAgents(env) });
+    jobsWith(h);
+    h.source.boot();
+    running(h, 'r1', 500);
+    h.poll();
+    expect(h.agent(aid)?.status).toBe('idle');
+    h.advance(5_000);
+    h.poll();
+    expect(h.agent(aid)?.status).toBe('working');
+    expect(h.agent('hermes:crypto')?.status).toBe('idle');
+    h.execs.prepare("UPDATE executions SET status = 'completed'").all();
+    h.poll();
+    expect(h.agent(aid)?.status).toBe('idle');
+  });
+
+  it('as sessões do cron da rotina vão para o adicional (atividades, status e a resposta final no feed); o resto fica com o principal', () => {
+    const h = setup({ extraAgents: hermesExtraAgents(env) });
+    jobsWith(h);
+    h.source.boot();
+    const sid = `cron_${ANALYST}_20261022_180000`;
+    h.session(sid);
+    h.message(sid, 'user', { content: '[IMPORTANT: You are running a scheduled cron job.]\nRevise os palpites antigos' });
+    h.message(sid, 'assistant', { calls: [['mcp__kairo__kairo_eventos', {}]], finish: 'tool_calls' });
+    h.session('20261022_180000_cli001', { source: 'cli' });
+    h.message('20261022_180000_cli001', 'user', { content: 'Qual o saldo?' });
+    h.poll();
+    const a = h.agent(aid)!;
+    expect(a.status).toBe('working');
+    expect(a.recent.map((x) => `${x.kind}:${x.text}`)).toEqual(['prompt:Rotina: analista-mercado', 'mcp:Lendo os eventos do Kairo']);
+    const main = h.agent('hermes:crypto')!;
+    expect(main.recent.map((x) => x.kind)).toEqual(['prompt']);
+    expect(main.recent[0].text).not.toMatch(/analista/);
+
+    h.advance(10_000);
+    h.message(sid, 'assistant', { content: 'Lição: o radar errou o UNIUSDT.', finish: 'stop' });
+    h.state.prepare('UPDATE sessions SET ended_at = ? WHERE id = ?').all((T0 + 10_000) / 1000, sid);
+    h.poll();
+    expect(h.agent(aid)!.status).toBe('idle');
+    const feed = h.office.recentFeed(50);
+    expect(feed.some((f) => f.agentId === aid && f.activity.kind === 'respond' && (f.activity.detail ?? f.activity.text).includes('Lição'))).toBe(true);
+    expect(feed.some((f) => f.agentId === 'hermes:crypto' && f.activity.kind === 'respond')).toBe(false);
+    expect(h.history('hermes:crypto').some((x) => x.text.includes('analista'))).toBe(false);
+  });
+
+  it('rotina do adicional que falhou: o erro vai para ele', () => {
+    const h = setup({ extraAgents: hermesExtraAgents(env) });
+    jobsWith(h);
+    h.source.boot();
+    writeFileSync(
+      join(h.crypto, 'cron', 'jobs.json'),
+      JSON.stringify({ jobs: [{ id: ANALYST, name: 'analista-mercado', last_status: 'error', last_error: 'Timeout', last_run_at: '2026-10-22T18:05:00+00:00' }] }),
+    );
+    h.advance(1_000);
+    h.poll();
+    expect(h.agent(aid)?.activity).toMatchObject({ kind: 'error', text: 'Rotina falhou: analista-mercado' });
+    expect(h.agent('hermes:crypto')?.activity?.kind).not.toBe('error');
+  });
+
+  it('terminal: o do adicional só com as sessões e saídas da rotina; o do principal sem elas', () => {
+    const h = setup({ extraAgents: hermesExtraAgents(env) });
+    jobsWith(h);
+    const outA = join(h.crypto, 'cron', 'output', ANALYST);
+    mkdirSync(outA, { recursive: true });
+    writeFileSync(join(outA, '2026-10-21_09-00-00.md'), '# Cron Job: analista-mercado\n\n## Prompt\n\nRevise\n\n## Response\n\nLição antiga.\n');
+    const sa = `cron_${ANALYST}_20261022_170000`;
+    h.session(sa, { ended: T0 / 1000 + 30 });
+    h.message(sa, 'user', { content: 'Revise os palpites' });
+    h.session('filha-a', { source: 'subagent', parent: sa });
+    h.message('filha-a', 'assistant', { content: 'resumo da filha', finish: 'stop' });
+    h.message(sa, 'assistant', { content: 'Lição nova.', finish: 'stop' });
+    const sm = '20261022_170500_cli002';
+    h.session(sm, { source: 'cli', ended: T0 / 1000 + 60 });
+    h.message(sm, 'user', { content: 'Oi' });
+    h.message(sm, 'assistant', { content: 'Olá.', finish: 'stop' });
+    h.source.boot();
+
+    const analyst = texts(h.source.terminalFeed(aid)!.load(100).entries);
+    expect(analyst).toContain('Lição nova.');
+    expect(analyst).toContain('Lição antiga.');
+    expect(analyst).toContain('resumo da filha');
+    expect(analyst).not.toContain('Olá.');
+    const main = texts(h.source.terminalFeed('hermes:crypto')!.load(100).entries);
+    expect(main).toContain('Olá.');
+    expect(main).not.toContain('Lição');
+    expect(main).not.toContain('resumo da filha');
+
+    // ao vivo: cada mensagem nova vai só para o terminal do dono
+    const fa = h.source.terminalFeed(aid)!;
+    const fm = h.source.terminalFeed('hermes:crypto')!;
+    fa.load(100);
+    fm.load(100);
+    const sa2 = `cron_${ANALYST}_20261022_181000`;
+    h.session(sa2);
+    h.message(sa2, 'user', { content: 'Rodada nova' });
+    h.message(sm, 'user', { content: 'Outra pergunta' });
+    const liveA = texts(fa.poll());
+    const liveM = texts(fm.poll());
+    expect(liveA).toContain('Rodada nova');
+    expect(liveA).not.toContain('Outra pergunta');
+    expect(liveM).toContain('Outra pergunta');
+    expect(liveM).not.toContain('Rodada nova');
+  });
+
+  it('histórico do terminal: a sessão aberta da rotina aponta para o adicional', async () => {
+    const h = setup({ extraAgents: hermesExtraAgents(env) });
+    jobsWith(h);
+    const sid = `cron_${ANALYST}_20261022_180000`;
+    h.session(sid);
+    h.message(sid, 'user', { content: 'Revise' });
+    h.source.boot();
+    const list = await h.source.history().list();
+    expect(list.find((r) => r.sessionId === `crypto~${sid}`)).toMatchObject({ open: true, agentId: aid, title: 'Rotina: analista-mercado' });
+  });
+
+  it('rotina configurada que não está no jobs.json: nenhum agente (aviso no log, uma vez); entra quando a rotina aparece', () => {
+    const info = vi.spyOn(log, 'info');
+    cleanups.push(() => info.mockRestore());
+    const h = setup({ extraAgents: hermesExtraAgents(env) });
+    h.source.boot();
+    h.advance(1_000);
+    h.poll();
+    expect(h.agent(aid)).toBeUndefined();
+    const warned = info.mock.calls.filter(([m]) => m.includes('analista-mercado'));
+    expect(warned).toHaveLength(1);
+    expect(warned[0][0]).toContain('jobs.json');
+    jobsWith(h);
+    h.advance(1_000);
+    h.poll();
+    expect(h.agent(aid)).toMatchObject({ name: 'Analista' });
+  });
+
+  it('nomes: HABBLAUD_HERMES_NOMES vale por cima do nome da variável; o editor por cima dos dois; rotina pelo id; papel derivado', () => {
+    const names = new NameStore(null);
+    const other = 'b'.repeat(12);
+    const both = { HABBLAUD_HERMES_AGENTES: `crypto/analista-mercado=Analista:f,crypto/${other}=Escriba`, HABBLAUD_HERMES_NOMES: 'crypto/analista-mercado=Oráculo:m' };
+    const h = setup({ extraAgents: hermesExtraAgents(both), agentNames: hermesAgentNames(both), names });
+    jobsWith(h, [{ id: other, name: 'diario', enabled: true }]);
+    h.source.boot();
+    expect(h.agent(aid)).toMatchObject({ name: 'Oráculo', look: 'm', role: 'Analista' });
+    expect(h.agent(`hermes:crypto:agente:${other}`)).toMatchObject({ name: 'Escriba', role: 'Agente da rotina diario' });
+    expect(h.office.setCharacter(aid, { name: 'Professora', seed: 7, parts: {} })).toEqual({ result: 'ok' });
+    expect(h.agent(aid)?.name).toBe('Professora');
   });
 });

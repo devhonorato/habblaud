@@ -122,9 +122,9 @@ export function teamTotals(p: HermesPanel): { profiles: number; jobs: number; ru
   };
 }
 
-/** Perfil dono de um agente (o principal ou um Vigia). */
+/** Perfil dono de um agente (o principal, um Vigia ou um agente adicional). */
 export function profileOfAgent(p: HermesPanel | null, agentId: string): HermesProfilePanel | undefined {
-  return p?.profiles.find((x) => x.agentId === agentId || x.jobs.some((j) => j.vigiaId === agentId));
+  return p?.profiles.find((x) => x.agentId === agentId || x.jobs.some((j) => j.vigiaId === agentId || j.agentId === agentId));
 }
 
 /** Nome da sala do perfil no escritório (HABBLAUD_HERMES_SALAS ou o "Renomear"), ou o do perfil. */

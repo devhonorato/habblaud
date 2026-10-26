@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { setQuiet } from '../../log';
-import { hermesAgentNames, hermesReadingDays, hermesRoomNames } from './config';
+import { hermesAgentNames, hermesExtraAgents, hermesReadingDays, hermesRoomNames } from './config';
 
 setQuiet(true);
 
@@ -35,6 +35,21 @@ describe('HABBLAUD_HERMES_NOMES', () => {
   it('nomes únicos: o repetido (sem diferenciar caixa) fica só no primeiro; chaves e nomes inválidos saem', () => {
     const m = hermesAgentNames({ HABBLAUD_HERMES_NOMES: `crypto=Hermes,finance=hermes,a/b/c=X,/x=Y,ok=${'n'.repeat(30)}` });
     expect([...m.keys()]).toEqual(['crypto']);
+  });
+});
+
+describe('HABBLAUD_HERMES_AGENTES', () => {
+  it('perfil/rotina=Nome, com o visual opcional (o do pool sem ele)', () => {
+    expect(hermesExtraAgents({ HABBLAUD_HERMES_AGENTES: 'crypto/analista-mercado=Analista:f; finance/abc123def456 = Ana' })).toEqual([
+      { profile: 'crypto', job: 'analista-mercado', name: 'Analista', look: 'f' },
+      { profile: 'finance', job: 'abc123def456', name: 'Ana', look: 'f' },
+    ]);
+    expect(hermesExtraAgents({})).toEqual([]);
+  });
+
+  it('sem rotina, chave inválida, chave ou nome repetido: ignorados', () => {
+    const list = hermesExtraAgents({ HABBLAUD_HERMES_AGENTES: 'crypto=X,crypto/=Y,a/b/c=Z,../x/y=W,crypto/r1=Bia,crypto/r1=Cid,crypto/r2=bia,crypto/r3=Duda' });
+    expect(list.map((a) => `${a.job}=${a.name}`)).toEqual(['r1=Bia', 'r3=Duda']);
   });
 });
 

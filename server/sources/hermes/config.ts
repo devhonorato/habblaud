@@ -7,6 +7,8 @@
 //   sendo a pasta do perfil);
 // - HABBLAUD_HERMES_NOMES="crypto=Hermes,crypto/vigia-mercado=Sentinela:f": nome do agente principal (`perfil`) e do
 //   Vigia de uma rotina (`perfil/<nome ou id da rotina>`), com `:f`/`:m` opcional para o visual.
+// Agentes adicionais: HABBLAUD_HERMES_AGENTES="crypto/analista-mercado=Analista:f" = um personagem permanente a mais na
+//   sala do perfil, dono das sessões do cron daquela rotina (no lugar do principal).
 // Leituras do Vigia: HABBLAUD_HERMES_LEITURAS_DIAS (padrão 7; 0 desliga) = dias guardados em <dataDir>/hermes-leituras.
 import type { HermesPanel } from '../../../shared/hermes';
 import { nameKey, parseCharacterName } from '../../../shared/appearance';
@@ -79,6 +81,43 @@ export function hermesAgentNames(env: NodeJS.ProcessEnv): Map<string, HermesAgen
     out.set(job === undefined ? profile : `${profile}/${job}`, { name, look });
   }
   warnBad('HABBLAUD_HERMES_NOMES', bad);
+  return out;
+}
+
+/** Um agente adicional do Hermes (HABBLAUD_HERMES_AGENTES): o dono das sessões do cron de uma rotina. */
+export interface HermesExtraAgent {
+  profile: string;
+  /** Nome ou id da rotina no jobs.json. */
+  job: string;
+  name: string;
+  look: 'f' | 'm';
+}
+
+/**
+ * HABBLAUD_HERMES_AGENTES: "perfil/rotina" (nome ou id da rotina) -> nome do agente adicional, com `:f`/`:m` opcional.
+ * A chave precisa da rotina; chave ou nome repetido (sem diferenciar caixa) fica só no primeiro.
+ */
+export function hermesExtraAgents(env: NodeJS.ProcessEnv): HermesExtraAgent[] {
+  const bad: string[] = [];
+  const out: HermesExtraAgent[] = [];
+  const keys = new Set<string>();
+  const used = new Set<string>();
+  for (const [key, value] of pairs(env.HABBLAUD_HERMES_AGENTES, bad)) {
+    const [profile, job, extra] = key.split('/').map((s) => s.trim());
+    const m = /^(.*?):([fm])$/i.exec(value);
+    const name = parseCharacterName(m ? m[1] : value);
+    const okKey = PROFILE_NAME.test(profile ?? '') && extra === undefined && !!job;
+    const k = `${profile}/${job}`;
+    if (!okKey || !name || keys.has(k) || used.has(nameKey(name))) {
+      bad.push(`${key}=${value}`);
+      continue;
+    }
+    keys.add(k);
+    used.add(nameKey(name));
+    const look = m ? (m[2].toLowerCase() as 'f' | 'm') : (NAME_POOL.find((p) => nameKey(p.name) === nameKey(name))?.look ?? 'm');
+    out.push({ profile: profile!, job: job!, name, look });
+  }
+  warnBad('HABBLAUD_HERMES_AGENTES', bad);
   return out;
 }
 

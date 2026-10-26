@@ -34,6 +34,11 @@ do meio (0.**3**.0).
   RAM, disco, temperatura e ligado há, as cotas por modelo e provedor com os limites/429 do dia, as rotinas de cada
   perfil, a resposta de cada rodada e o mercado do Kairo (também pela TV do lounge e pelo quadro branco da sala). Venda
   com lucro acende festa na sala; pausa por risco, alarme.
+- **Hermes: agentes adicionais por rotina.** `HABBLAUD_HERMES_AGENTES` (ex.: `crypto/analista-mercado=Analista:f`) põe
+  na sala do perfil um personagem permanente a mais para uma rotina do cron: ele trabalha quando a rotina roda, as
+  atividades, a resposta final no feed e o terminal das sessões dela vão para ele, e o agente principal deixa de
+  recebê-las. O nome segue o editor de personagem e `HABBLAUD_HERMES_NOMES`; rotina que não está no `jobs.json` não
+  cria ninguém (aviso no log). A aba Equipe ganha "Ver o agente" na rotina.
 - **Hermes: nome da sala e dos agentes.** `HABBLAUD_HERMES_SALAS` (ex.: `crypto=Kairo,finance=Finanças`) dá o nome
   da sala de cada perfil na placa, na barra lateral, no feed, nos avisos, no histórico do terminal e na janela do
   Hermes; `HABBLAUD_HERMES_NOMES` (ex.: `crypto=Hermes,crypto/vigia-mercado=Sentinela`) fixa o nome do agente

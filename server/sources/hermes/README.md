@@ -12,7 +12,8 @@ rotina do cron e outra.
 | `HABBLAUD_OMNIROUTE_URL` | (Opcional) Link "Abrir o OmniRoute" na aba Cotas de IA. |
 | `HABBLAUD_BESZEL_URL` | (Opcional) Link "Abrir o Beszel" na aba Servidor. |
 | `HABBLAUD_HERMES_SALAS` | (Opcional) Nome exibido da sala de cada perfil: `crypto=Kairo,finance=Finanças`. Ver "Nomes da sala e dos agentes". |
-| `HABBLAUD_HERMES_NOMES` | (Opcional) Nome do agente principal (`perfil`) e do Vigia de uma rotina (`perfil/<rotina>`): `crypto=Hermes,crypto/vigia-mercado=Sentinela,finance=Atlas`. |
+| `HABBLAUD_HERMES_NOMES` | (Opcional) Nome do agente principal (`perfil`) e do Vigia ou do agente adicional de uma rotina (`perfil/<rotina>`): `crypto=Hermes,crypto/vigia-mercado=Sentinela,finance=Atlas`. |
+| `HABBLAUD_HERMES_AGENTES` | (Opcional) Agentes adicionais: `perfil/<nome ou id da rotina>=<Nome>[:f\|:m]`, ex. `crypto/analista-mercado=Analista:f`. Ver "Agentes adicionais". |
 | `HABBLAUD_HERMES_LEITURAS_DIAS` | (Opcional) Dias de leituras do monitor guardadas pelo Habblaud (padrão `7`; `0` desliga). Ver "Histórico das leituras". |
 | `HABBLAUD_CLIMA` | `0` desliga o tempo lá fora (open-meteo, sem chave, no máximo a cada 10 min). Lugar: `HABBLAUD_CLIMA_LAT`, `HABBLAUD_CLIMA_LON`, `HABBLAUD_CLIMA_LOCAL` (padrão: São Paulo). |
 
@@ -74,7 +75,8 @@ assets de "Arquiteto"), então o **Renomear** do menu da sala (guardado em `room
 escolhido no menu volta ao da variável.
 
 **Agentes (`HABBLAUD_HERMES_NOMES`).** A chave `perfil` dá o nome do agente principal; `perfil/<rotina>` (o nome da
-rotina no `jobs.json`, ex. `vigia-mercado`, ou o id dela) dá o nome do Vigia daquela rotina. Um `:f` ou `:m` no fim
+rotina no `jobs.json`, ex. `vigia-mercado`, ou o id dela) dá o nome do Vigia daquela rotina ou do agente adicional dela
+(`HABBLAUD_HERMES_AGENTES`). Um `:f` ou `:m` no fim
 do nome escolhe o visual (`Sentinela:f`); sem ele, vale o do nome se ele for do pool de nomes do Habblaud (Ana = `f`),
 senão `m`. O visual continua estável: a semente da aparência é a do id do agente (`hermes:<perfil>`), que não muda
 entre execuções nem reinícios.
@@ -84,7 +86,8 @@ Precedência do nome de um agente do Hermes (`Office.addMain`):
 1. o personagem feito no **editor de personagem** (`names.json`, por sala), quando a dona dele é este agente — vale
    também depois de reiniciar o servidor;
 2. o nome de `HABBLAUD_HERMES_NOMES`;
-3. sem nada configurado: o principal recebe o nome sorteado (e guardado por sessão em `names.json`), o Vigia
+3. o nome de `HABBLAUD_HERMES_AGENTES` (só os agentes adicionais);
+4. sem nada configurado: o principal recebe o nome sorteado (e guardado por sessão em `names.json`), o Vigia
    "Vigia".
 
 "Voltar ao sorteio" no editor apaga o personagem e volta ao nome configurado (ou ao sorteio, sem configuração).
@@ -146,6 +149,33 @@ o gateway parado) e:
 O terminal do Vigia mostra cada checagem (com a diferença, quando chamou o principal) e, por último, a leitura
 completa do monitor (radar, instâncias, posições, eventos, avisos).
 
+## Agentes adicionais
+
+`HABBLAUD_HERMES_AGENTES` põe na sala do perfil um personagem **permanente** a mais por rotina, dono das sessões do
+cron dela no lugar do principal. Cada entrada é `perfil/<nome ou id da rotina>=<Nome>[:f|:m]` (separadas por vírgula
+ou ponto e vírgula; o `:f`/`:m` escolhe o visual como em `HABBLAUD_HERMES_NOMES`). Ex.:
+`HABBLAUD_HERMES_AGENTES=crypto/analista-mercado=Analista:f` cria o Analista, que revisa os palpites antigos e registra
+as lições, na sala Kairo.
+
+- **Rotina:** casa primeiro pelo id e depois pelo nome no `jobs.json`. Rotina que não existe: o agente não entra (uma
+  linha `info` no log); entra quando a rotina aparecer e sai se ela sumir (as sessões voltam ao principal).
+- **Papel:** "Analista" quando o nome da rotina fala de análise (`analis`/`analyst`); senão "Agente da rotina <nome>".
+- **Nome:** a precedência de "Nomes da sala e dos agentes" (editor > `HABBLAUD_HERMES_NOMES` `perfil/<rotina>` > o nome
+  desta variável). O id do agente é `hermes:<perfil>:agente:<id da rotina>`.
+- **Status:** a mesma regra do principal, só com a rotina dele: `working` com uma execução dela rodando há mais de 3 s
+  no `executions.db` ou mensagem nova nos últimos 60 s numa sessão do cron dela (`cron_<id>_...`) que não terminou o
+  turno; `waiting` com um `clarify` sem resposta; `offline` com o gateway parado; senão `idle`. A execução dessa rotina
+  não deixa mais o principal `working`.
+- **Atividades e feed:** as mensagens das sessões do cron da rotina (e das sessões filhas delas, que viram subagentes
+  dele) vão para ele, com a mesma descrição do principal; a resposta final aparece no feed como o `respond` dele, e
+  "Rotina falhou" (`last_status` de erro) também. Título `Rotina: <nome> (<agenda>)`; números e modelo da sessão mais
+  recente dele.
+- **Terminal:** o dele mostra só as sessões da rotina (e as saídas do cron dela em `cron/output/<id>/`); o do principal
+  deixa de mostrá-las. No histórico do terminal, a sessão aberta da rotina aponta para ele.
+- **Painel:** a rotina na aba Equipe ganha o botão "Ver o agente" (`jobs[].agentId`).
+- **Rotina com monitor:** o Vigia continua como antes. Se a mesma rotina também estiver aqui, o Vigia passa a chamar o
+  agente adicional ("Chamou Analista: ...").
+
 ### Histórico das leituras
 
 O Hermes só guarda a última leitura (`monitor_last_output.txt`, reescrito a cada checagem). O Habblaud guarda uma
@@ -172,7 +202,8 @@ O terminal do Habblaud segue arquivos JSONL; a conversa do Hermes está no SQLit
 `AgentSource.terminalFeed` (`server/sources/source.ts`), um provedor de conversa sem arquivo que o terminal usa no lugar
 do transcript (`terminal.ts`):
 
-- principal: as últimas 1.200 mensagens do `state.db` (começando no início de uma sessão) e, antes delas, as rodadas
+- principal: as últimas 1.200 mensagens do `state.db` (começando no início de uma sessão; sem as sessões dos agentes
+  adicionais, que vão para o terminal de cada um, com o mesmo formato) e, antes delas, as rodadas
   das saídas do cron (`## Prompt`, a diferença do monitor e `## Response`); cada sessão abre com um cabeçalho (rotina
   ou conversa, sessão, modelo, início, duração). O pedido sai sem o aviso padrão do Hermes ("[IMPORTANT: …]"); cada
   chamada mostra os argumentos e o resultado (sem o envelope `<untrusted_tool_result>`; o JSON de `{"result": "…"}`
@@ -216,6 +247,6 @@ pasta montada; a temperatura só aparece se `/sys/class/thermal` estiver visíve
 - Sem uso de plano (5h/semanal): o cartão da conta "Hermes" mostra as cotas de IA do dia, sem barras de limite (os
   limites dos provedores não são publicados no diretório do Hermes).
 - Sem `HABBLAUD_HERMES_SALAS`, o nome da sala é o do perfil; a descrição do `profile.yaml` vai no título do agente.
-- O editor de personagem guarda **um** personagem por sala (`names.json`), e o principal e o Vigia dividem a sala do
-  perfil: se os dois forem editados, o último fica com o personagem e o outro, depois de reiniciar, volta ao nome
+- O editor de personagem guarda **um** personagem por sala (`names.json`), e o principal, o Vigia e os agentes
+  adicionais dividem a sala do perfil: se os dois forem editados, o último fica com o personagem e o outro, depois de reiniciar, volta ao nome
   configurado (ou ao sorteado).

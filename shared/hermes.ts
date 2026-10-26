@@ -85,6 +85,8 @@ export interface HermesJob {
   lastError?: string;
   /** Agente "Vigia" desta rotina no escritório. */
   vigiaId?: string;
+  /** Agente adicional (HABBLAUD_HERMES_AGENTES) que roda as sessões desta rotina no lugar do principal. */
+  agentId?: string;
 }
 
 /** Saída de uma rotina (cron/output/<job>/<data>.md). */

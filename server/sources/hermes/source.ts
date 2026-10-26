@@ -22,6 +22,11 @@
 // <principal>: <motivo>" (a primeira linha nova da diferença). Uma leitura nova do monitor do Kairo pode acender a
 // sala: venda com lucro = festa, pausa por risco = alarme (cron.ts, marketEffect).
 //
+// Agentes adicionais (HABBLAUD_HERMES_AGENTES, ex.: crypto/analista-mercado=Analista): um personagem permanente a mais
+// na sala do perfil por rotina configurada, dono das sessões do cron dela (atividades, status, título, números e
+// terminal saem do principal e vão para ele). Mesma regra de status do principal, só com a rotina dele. Rotina que não
+// está no jobs.json: o agente não entra (aviso no log).
+//
 // Nomes: HABBLAUD_HERMES_SALAS dá o nome exibido da sala de cada perfil (o apelido padrão da pasta: o "Renomear" do
 // menu continua valendo por cima) e HABBLAUD_HERMES_NOMES o do principal e de cada Vigia (o personagem do editor
 // continua valendo por cima; ver Office.addMain). Cada leitura nova do monitor também vai para o histórico das leituras
@@ -40,7 +45,7 @@ import { errMsg, log } from '../../log';
 import type { Office, TranscriptSummary } from '../../model/office';
 import { HISTORY_DAYS } from '../history';
 import type { AgentSource, HistoryProvider, HistoryResolveResult, TerminalFeed } from '../source';
-import type { HermesAgentName } from './config';
+import type { HermesAgentName, HermesExtraAgent } from './config';
 import { diffOf, marketEffect, parseMarket, wakeReason } from './cron';
 import { describeMessage, parseToolCalls, type HermesMessage } from './describe';
 import { OutputIndex, readAgentLogs, readUsageAudit, SystemReader, utcDay, WeatherService, type SystemReaderOptions, type WeatherOptions } from './panel';
@@ -76,6 +81,7 @@ const PARTY_MS = 15_000;
 const ALARM_MS = 10 * 60_000;
 const MAIN_ROLE = tr('Agente Hermes');
 const SUB_ROLE = tr('Subagente (Hermes)');
+const ANALYST_ROLE = tr('Analista');
 /** Conta única da fonte (uma pasta de dados do Hermes). */
 const ACCOUNT_ID = 'hermes';
 const ACCOUNT_COLOR = '#d9a441';
@@ -139,6 +145,8 @@ export interface HermesSourceOptions {
   agentNames?: ReadonlyMap<string, HermesAgentName>;
   /** Histórico das leituras do monitor (HABBLAUD_HERMES_LEITURAS_DIAS); ausente = desligado. */
   readings?: ReadingStore;
+  /** HABBLAUD_HERMES_AGENTES: agentes adicionais, donos das sessões do cron de uma rotina. */
+  extraAgents?: readonly HermesExtraAgent[];
 }
 
 /** Uma linha de `sessions` (só o que usamos). */
@@ -192,6 +200,28 @@ interface VigiaTracker {
   lastAt?: number;
 }
 
+/** A última mensagem de um agente (principal ou adicional): o estado do turno. */
+interface LastMessage {
+  at: number;
+  sessionId: string;
+  role: string;
+  finish?: string | null;
+  clarify: boolean;
+}
+
+/** Um agente adicional (HABBLAUD_HERMES_AGENTES): dono das sessões do cron de uma rotina. */
+interface ExtraTracker {
+  key: string;
+  job: CronJob;
+  config: HermesExtraAgent;
+  inOffice: boolean;
+  status: AgentStatus;
+  /** Última mensagem das sessões dele. */
+  last?: LastMessage;
+  /** Sessão mais recente dele. */
+  current?: SessionRow;
+}
+
 interface SubTracker {
   key: string;
   sessionId: string;
@@ -216,11 +246,11 @@ interface ProfileTracker {
   execSig: string;
   execRows: ExecRow[];
   columns?: { messages: string[]; sessions: string[] };
-  /** Última mensagem vista (de qualquer sessão principal). */
-  last?: { at: number; sessionId: string; role: string; finish?: string | null; clarify: boolean };
+  /** Última mensagem vista (de qualquer sessão principal que não é de um agente adicional). */
+  last?: LastMessage;
   /** Sessões recentes (as 12 mais novas e as das mensagens lidas), por id. */
   sessions: Map<string, SessionRow>;
-  /** Sessão principal mais recente. */
+  /** Sessão principal mais recente (fora as dos agentes adicionais). */
   current?: SessionRow;
   /** Início do turno por sessão (epoch ms). */
   turnStart: Map<string, number>;
@@ -233,6 +263,10 @@ interface ProfileTracker {
   jobRuns: Map<string, number | undefined>;
   /** Vigias (um por rotina com monitor), pelo id da rotina. */
   vigias: Map<string, VigiaTracker>;
+  /** Agentes adicionais, pelo id da rotina. */
+  extras: Map<string, ExtraTracker>;
+  /** Rotinas configuradas em HABBLAUD_HERMES_AGENTES que não estão no jobs.json (já avisadas no log). */
+  missingExtras: Set<string>;
   /** Execuções terminadas das rotinas com monitor (as mais recentes). */
   doneExecs: DoneExecRow[];
   execCols?: Set<string>;
@@ -347,11 +381,16 @@ export class HermesSource implements AgentSource {
   terminalFeed(agentId: string): TerminalFeed | undefined {
     for (const t of this.trackers.values()) {
       const jobs = () => t.jobs.read() ?? [];
-      if (agentId === t.key) return new MainFeed({ state: t.state, dir: t.profile.dir, jobs });
+      if (agentId === t.key) return new MainFeed({ state: t.state, dir: t.profile.dir, jobs, scope: () => ({ exclude: [...t.extras.keys()] }) });
+      for (const e of t.extras.values()) {
+        if (e.key !== agentId) continue;
+        const jobId = e.job.id;
+        return new MainFeed({ state: t.state, dir: t.profile.dir, jobs, scope: () => ({ only: jobId }) });
+      }
       for (const v of t.vigias.values()) {
         if (v.key !== agentId) continue;
         const store = this.opts.readings?.enabled ? this.opts.readings : undefined;
-        return new VigiaFeed(t.profile.dir, v.job, () => this.opts.office.get(t.key)?.name ?? t.profile.name, {
+        return new VigiaFeed(t.profile.dir, v.job, () => this.opts.office.get(this.ownerKeyOfJob(t, v.job.id))?.name ?? t.profile.name, {
           now: this.now,
           ...(store ? { readings: (from: number, to: number) => store.list(t.profile.name, v.job.id, from, to) } : {}),
         });
@@ -413,6 +452,7 @@ export class HermesSource implements AgentSource {
       if (seen.has(key)) continue;
       if (t.inOffice) this.opts.office.closeMain(t.key);
       for (const v of t.vigias.values()) if (v.inOffice) this.opts.office.closeMain(v.key);
+      for (const e of t.extras.values()) if (e.inOffice) this.opts.office.closeMain(e.key);
       t.state?.close();
       t.execs?.close();
       this.trackers.delete(key);
@@ -452,6 +492,8 @@ export class HermesSource implements AgentSource {
       subs: new Map(),
       jobRuns: new Map(),
       vigias: new Map(),
+      extras: new Map(),
+      missingExtras: new Set(),
       doneExecs: [],
       status: 'idle',
       inOffice: false,
@@ -463,6 +505,8 @@ export class HermesSource implements AgentSource {
     if (t.inOffice && !office.has(t.key)) t.inOffice = false;
     const jobs = t.jobs.read() ?? [];
     if (!t.inOffice) this.enter(t, now);
+    // Antes das mensagens: as sessões da rotina de um agente adicional já vão para ele.
+    this.syncExtras(t, jobs, now);
     const errors: string[] = [];
 
     // Execuções do cron (relidas só quando o banco muda; o filtro por tempo roda sempre).
@@ -505,13 +549,14 @@ export class HermesSource implements AgentSource {
     this.checkJobs(t, jobs, boot);
     this.syncVigias(t, jobs, now, boot);
     this.syncSubs(t, now);
-    const status = this.statusOf(t, now);
+    const status = this.statusOf(t, t.last, (r) => !t.extras.has(r.job_id), now);
     if (status !== t.status) {
       t.status = status;
       office.setStatus(t.key, status, status === 'waiting' ? tr('responder uma pergunta') : undefined);
     }
     if (status === 'working') office.fillWorkingActivity(t.key);
     this.applySummary(t, jobs);
+    this.updateExtras(t, now);
   }
 
   private enter(t: ProfileTracker, now: number): void {
@@ -552,7 +597,12 @@ export class HermesSource implements AgentSource {
     const order = t.columns.sessions.includes('started_at') ? 'started_at' : 'rowid';
     const recent = db.prepare(`SELECT ${sessionCols} FROM sessions ORDER BY ${order} DESC LIMIT 12`).all() as unknown as SessionRow[];
     t.sessions = new Map(recent.map((s) => [s.id, s]));
-    t.current = recent.find((s) => !s.parent_session_id);
+    const own = (s: SessionRow) => !s.parent_session_id && !this.extraOf(t, s.id);
+    t.current = recent.find(own) ?? (t.current && own(t.current) ? t.current : undefined);
+    for (const e of t.extras.values()) {
+      const cur = recent.find((s) => !s.parent_session_id && jobIdOfSession(s.id) === e.job.id);
+      if (cur) e.current = cur;
+    }
 
     const maxRow = db.prepare('SELECT max(id) AS m FROM messages').get() as { m?: unknown } | undefined;
     const maxId = num(maxRow?.m) ?? 0;
@@ -594,15 +644,22 @@ export class HermesSource implements AgentSource {
     const acts = describeMessage(m, { jobName, turnStartMs }, t.toolNames);
     if (t.toolNames.size > 400) for (const k of [...t.toolNames.keys()].slice(0, 200)) t.toolNames.delete(k);
 
-    let target = t.key;
+    // Sessão (ou sessão mãe) de uma rotina com agente adicional: tudo vai para ele, não para o principal.
+    const owner = this.extraOf(t, isSub ? (session?.parent_session_id ?? m.session_id) : m.session_id);
+    const ownerKey = owner?.key ?? t.key;
+    let target = ownerKey;
     if (isSub) {
       t.subLast.set(m.session_id, at);
       const sub = t.subs.get(m.session_id);
-      // Subagente ainda fora do escritório (entra no syncSubs deste ciclo): as atividades vão para o principal.
+      // Subagente ainda fora do escritório (entra no syncSubs deste ciclo): as atividades vão para o dono da sessão mãe.
       if (sub?.inOffice && !sub.done) target = sub.key;
     } else {
       const calls = m.role === 'assistant' ? parseToolCalls(m.tool_calls) : [];
-      t.last = { at, sessionId: m.session_id, role: m.role, finish: m.finish_reason, clarify: calls.some((c) => c.name === 'clarify') };
+      const last: LastMessage = { at, sessionId: m.session_id, role: m.role, finish: m.finish_reason, clarify: calls.some((c) => c.name === 'clarify') };
+      if (owner) {
+        owner.last = last;
+        if (session) owner.current = session;
+      } else t.last = last;
     }
     for (const a of acts) {
       const { key, ...desc } = a;
@@ -610,7 +667,21 @@ export class HermesSource implements AgentSource {
     }
     // O pedido de uma rotina com monitor = o Vigia acordou o principal (a diferença do monitor vem no pedido).
     const vigia = !isSub && m.role === 'user' && jobId ? this.vigiaFor(t, jobId, jobs, now) : undefined;
-    if (vigia) this.vigiaWoke(t, vigia, m, at, boot);
+    if (vigia) this.vigiaWoke(t, vigia, m, at, boot, ownerKey);
+  }
+
+  /** Agente adicional (no escritório) dono de uma sessão do cron. */
+  private extraOf(t: ProfileTracker, sessionId: string): ExtraTracker | undefined {
+    if (!t.extras.size) return undefined;
+    const jobId = jobIdOfSession(sessionId);
+    const e = jobId ? t.extras.get(jobId) : undefined;
+    return e?.inOffice ? e : undefined;
+  }
+
+  /** Quem roda as sessões de uma rotina: o agente adicional dela (no escritório) ou o principal. */
+  private ownerKeyOfJob(t: ProfileTracker, jobId: string): string {
+    const e = t.extras.get(jobId);
+    return e?.inOffice ? e.key : t.key;
   }
 
   /** O Vigia de uma rotina com monitor (criado aqui se a mensagem chegou antes do primeiro syncVigias). */
@@ -626,10 +697,10 @@ export class HermesSource implements AgentSource {
   }
 
   /** "Chamou <principal>: <motivo>" no Vigia (no feed, fora do boot). */
-  private vigiaWoke(t: ProfileTracker, v: VigiaTracker, m: HermesMessage, at: number, boot: boolean): void {
+  private vigiaWoke(t: ProfileTracker, v: VigiaTracker, m: HermesMessage, at: number, boot: boolean, ownerKey: string): void {
     const office = this.opts.office;
     if (!v.inOffice) return;
-    const main = office.get(t.key)?.name ?? t.profile.name;
+    const main = office.get(ownerKey)?.name ?? t.profile.name;
     const diff = typeof m.content === 'string' ? diffOf(m.content) : undefined;
     const reason = wakeReason(diff, 44);
     office.addActivity(
@@ -657,9 +728,10 @@ export class HermesSource implements AgentSource {
       t.jobRuns.set(j.id, j.lastRunAt);
       if (boot || !seen || j.lastRunAt === undefined || j.lastRunAt === prev) continue;
       if (!j.lastStatus || /^(ok|success|completed|no_change|silent)$/i.test(j.lastStatus)) continue;
+      const target = this.ownerKeyOfJob(t, j.id);
       this.opts.office.addActivity(
-        t.key,
-        { id: `${t.key}#job:${j.id}:${j.lastRunAt}`, at: j.lastRunAt, kind: 'error', icon: '⚠️', text: truncate(tr('Rotina falhou: {0}', [j.name]), 46), ...(j.lastError ? { detail: truncate(maskSecrets(j.lastError.slice(0, 1_200)), 300) } : {}), tool: 'cron', error: true },
+        target,
+        { id: `${target}#job:${j.id}:${j.lastRunAt}`, at: j.lastRunAt, kind: 'error', icon: '⚠️', text: truncate(tr('Rotina falhou: {0}', [j.name]), 46), ...(j.lastError ? { detail: truncate(maskSecrets(j.lastError.slice(0, 1_200)), 300) } : {}), tool: 'cron', error: true },
         true,
       );
     }
@@ -804,9 +876,10 @@ export class HermesSource implements AgentSource {
       }
       if (sub.inOffice && !sub.done) continue;
       const s = t.sessions.get(id);
+      const parent = s?.parent_session_id ? this.extraOf(t, s.parent_session_id) : undefined;
       const added = office.addSub({
         id: sub.key,
-        parentId: t.key,
+        parentId: parent?.key ?? t.key,
         sessionId: id,
         role: SUB_ROLE,
         ...(s?.title ? { title: s.title } : {}),
@@ -833,17 +906,18 @@ export class HermesSource implements AgentSource {
     return 'unknown';
   }
 
-  /** Job em execução agora (o mais recente), pelo executions.db. */
-  private runningJob(t: ProfileTracker, now: number): ExecRow | undefined {
+  /** Job em execução agora (o mais recente, entre os de `mine`), pelo executions.db. */
+  private runningJob(t: ProfileTracker, now: number, mine: (r: ExecRow) => boolean = () => true): ExecRow | undefined {
     return t.execRows.find((r) => {
+      if (!mine(r)) return false;
       const since = isoMs(r.started_at ?? undefined) ?? isoMs(r.claimed_at);
       return since !== undefined && now - since >= EXEC_SETTLE_MS && now - since < EXEC_STALE_MS;
     });
   }
 
-  private statusOf(t: ProfileTracker, now: number): AgentStatus {
-    const running = this.runningJob(t, now);
-    const last = t.last;
+  /** Status de um agente do perfil pela última mensagem dele e pelas execuções das rotinas dele (`mine`). */
+  private statusOf(t: ProfileTracker, last: LastMessage | undefined, mine: (r: ExecRow) => boolean, now: number): AgentStatus {
+    const running = this.runningJob(t, now, mine);
     const session = last ? t.sessions.get(last.sessionId) : undefined;
     const ended = !!session?.ended_at;
     // Turno fechado: a última mensagem é a resposta final do assistente.
@@ -858,12 +932,17 @@ export class HermesSource implements AgentSource {
   private applySummary(t: ProfileTracker, jobs: readonly CronJob[]): void {
     if (!t.inOffice) return;
     const now = this.now();
-    const running = this.runningJob(t, now);
+    const running = this.runningJob(t, now, (r) => !t.extras.has(r.job_id));
     const cur = t.current;
     const jobOf = (id: string | undefined) => (id ? jobs.find((j) => j.id === id) : undefined);
     const job = jobOf(running?.job_id) ?? jobOf(cur ? jobIdOfSession(cur.id) : undefined);
     const description = t.yaml.read();
     const title = job ? tr('Rotina: {0}', [job.name]) : (cur?.title ?? description);
+    this.opts.office.applyTranscript(t.key, this.summaryOf(t, cur, title, t.last));
+  }
+
+  /** Números, modelo e título de um agente do perfil pela sessão mais recente dele. */
+  private summaryOf(t: ProfileTracker, cur: SessionRow | undefined, title: string | undefined, last: LastMessage | undefined): TranscriptSummary {
     const stats: AgentStats = {
       toolCalls: num(cur?.tool_call_count) ?? 0,
       tokensIn: (num(cur?.input_tokens) ?? 0) + (num(cur?.cache_read_tokens) ?? 0) + (num(cur?.cache_write_tokens) ?? 0),
@@ -875,8 +954,87 @@ export class HermesSource implements AgentSource {
     const summary: TranscriptSummary = { tasks: [], stats };
     if (title) summary.title = title.slice(0, 120);
     if (cur?.model) summary.model = cur.model;
-    if (t.last) summary.lastAt = t.last.at;
-    this.opts.office.applyTranscript(t.key, summary);
+    if (last) summary.lastAt = last.at;
+    return summary;
+  }
+
+  // ---------------------------------------------------------------- agentes adicionais
+
+  /**
+   * Agentes adicionais do perfil (HABBLAUD_HERMES_AGENTES): entram com a rotina no jobs.json (pelo id ou pelo nome) e
+   * saem quando ela some. Rotina configurada que não existe: nada entra, com um aviso no log (uma vez).
+   */
+  private syncExtras(t: ProfileTracker, jobs: readonly CronJob[], now: number): void {
+    const configs = this.opts.extraAgents?.filter((c) => c.profile === t.profile.name) ?? [];
+    if (!configs.length && !t.extras.size) return;
+    const office = this.opts.office;
+    const want = new Map<string, { job: CronJob; config: HermesExtraAgent }>();
+    if (t.inOffice) {
+      for (const config of configs) {
+        const job = jobs.find((j) => j.id === config.job) ?? jobs.find((j) => j.name === config.job);
+        if (!job) {
+          if (!t.missingExtras.has(config.job)) {
+            t.missingExtras.add(config.job);
+            log.info(tr('Hermes: a rotina {0} do perfil {1} não está no jobs.json; o agente {2} não entra.', [config.job, t.profile.name, config.name]));
+          }
+          continue;
+        }
+        t.missingExtras.delete(config.job);
+        if (!want.has(job.id)) want.set(job.id, { job, config });
+      }
+    }
+    for (const [id, e] of [...t.extras]) {
+      if (want.has(id)) continue;
+      if (e.inOffice) office.closeMain(e.key);
+      t.extras.delete(id);
+    }
+    for (const { job, config } of want.values()) {
+      let e = t.extras.get(job.id);
+      if (!e) {
+        e = { key: `${t.key}:agente:${job.id}`, job, config, inOffice: false, status: 'idle' };
+        t.extras.set(job.id, e);
+      }
+      e.job = job;
+      e.config = config;
+      if (e.inOffice && !office.has(e.key)) e.inOffice = false;
+      if (!e.inOffice) this.enterExtra(t, e, now);
+    }
+  }
+
+  private enterExtra(t: ProfileTracker, e: ExtraTracker, now: number): void {
+    const office = this.opts.office;
+    const names = this.opts.agentNames;
+    // Precedência: o personagem do editor (Office.addMain) > HABBLAUD_HERMES_NOMES > o nome de HABBLAUD_HERMES_AGENTES.
+    const fixed = names?.get(`${t.profile.name}/${e.job.name}`) ?? names?.get(`${t.profile.name}/${e.job.id}`) ?? e.config;
+    office.addMain({
+      id: e.key,
+      provider: 'hermes',
+      account: this.accountId,
+      sessionId: `hermes-${t.profile.name}-agente-${e.job.id}`,
+      cwd: this.roomPathOf(t.profile),
+      role: /analis|analyst/i.test(e.job.name) ? ANALYST_ROLE : tr('Agente da rotina {0}', [e.job.name]),
+      startedAt: now,
+      status: e.status,
+      name: fixed.name,
+      look: fixed.look,
+    });
+    e.inOffice = office.has(e.key);
+  }
+
+  /** Status e resumo de cada agente adicional (mesma regra do principal, só com a rotina e as sessões dele). */
+  private updateExtras(t: ProfileTracker, now: number): void {
+    const office = this.opts.office;
+    for (const e of t.extras.values()) {
+      if (!e.inOffice) continue;
+      const status = this.statusOf(t, e.last, (r) => r.job_id === e.job.id, now);
+      if (status !== e.status) {
+        e.status = status;
+        office.setStatus(e.key, status, status === 'waiting' ? tr('responder uma pergunta') : undefined);
+      }
+      if (status === 'working') office.fillWorkingActivity(e.key);
+      const title = tr('Rotina: {0}', [e.job.schedule ? `${e.job.name} (${e.job.schedule})` : e.job.name]);
+      office.applyTranscript(e.key, this.summaryOf(t, e.current, title, e.last));
+    }
   }
 
   // ---------------------------------------------------------------- histórico do terminal
@@ -915,7 +1073,8 @@ export class HermesSource implements AgentSource {
         const title = job ? tr('Rotina: {0}', [job]) : s.title;
         if (title) r.title = title.slice(0, 160);
         if (firstAt) r.firstAt = firstAt;
-        if (open && t.inOffice) r.agentId = t.key;
+        const owner = this.extraOf(t, s.id);
+        if (open && t.inOffice) r.agentId = owner?.key ?? t.key;
         out.push(r);
       }
     }
@@ -980,6 +1139,7 @@ export class HermesSource implements AgentSource {
             ...(j.lastStatus ? { lastStatus: j.lastStatus } : {}),
             ...(j.lastError ? { lastError: maskSecrets(j.lastError.slice(0, 1_000)) } : {}),
             ...(v?.inOffice ? { vigiaId: v.key } : {}),
+            ...(t.extras.get(j.id)?.inOffice ? { agentId: t.extras.get(j.id)!.key } : {}),
           };
         }),
         outputs: this.outputs.list(t.profile.dir, jobs),
