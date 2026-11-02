@@ -49,6 +49,11 @@ routes, `HABBLAUD_*` variables, file names and Habblaud World keep the original 
 Atrio is based on [Habblaud](https://github.com/marmottajr/habblaud), MIT license. The original `LICENSE` stays in
 this repository, and the credit appears in the help (`?` › About) and in Settings › About.
 
+Work happens on the `hermes` branch; `upstream` points to the original project. Deploy lives in the Atrio server
+repository (`/srv/ai`, `apps/habblaud/`): the branch is exported with `git archive hermes` into
+`apps/habblaud/fonte/` and built there with `docker compose up -d --build`. That repository's README has the step by
+step.
+
 ## Contents
 
 - [Fork Atrio](#fork-atrio)
