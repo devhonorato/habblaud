@@ -178,7 +178,7 @@ export function readTemperature(sysRoot: string): number | undefined {
 export const LOG_TAIL = 3 * 1024 * 1024;
 const LOG_LINE = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2}):(\d{2})/;
 const API_CALL = /API call #\d+:.*?\bmodel=(\S+)(?:.*?\bprovider=(\S+))?/;
-const LIMIT = /RateLimitError|\b429\b|Too Many Requests|rate[ _-]?limit|quota|resource[_ ]exhausted/i;
+const LIMIT = /RateLimitError|(?:HTTP|status|code|error)\D{0,12}429\b|Too Many Requests|rate[ _-]?limit(?:ed| exceeded)|quota (?:exceeded|exhausted)|resource[_ ]exhausted/i;
 /** O provedor real atrás do roteador (OmniRoute), se o log disser. */
 const UPSTREAM = /\b(?:upstream|routed_to|actual_provider|served_by|x-omniroute-provider)[=:]\s*"?([\w./-]+)/i;
 
@@ -220,11 +220,12 @@ export function readAgentLogs(dir: string, profiles: readonly string[], day: str
         entry(clean(call[1]) ?? '?', upstream ?? clean(call[2]) ?? '?').calls++;
         continue;
       }
-      if (!/WARNING|ERROR|CRITICAL/.test(line.slice(0, 60)) && !/\b429\b|RateLimitError/.test(line)) continue;
-      if (!LIMIT.test(line)) continue;
+      const msg = line.slice(t[0].length).replace(/^[.,]\d+/, '');
+      if (!/WARNING|ERROR|CRITICAL/.test(msg.slice(0, 40))) continue;
+      if (!LIMIT.test(msg)) continue;
       const model = clean(/\bmodel=(\S+)/.exec(line)?.[1]);
       const provider = clean(UPSTREAM.exec(line)?.[1] ?? /\bprovider=(\S+)/.exec(line)?.[1]);
-      const ev: HermesLimitEvent = { at, profile: f.profile, text: truncate(maskSecrets(line.slice(t[0].length).replace(/^[\s,.\d]*/, '').trim()), 240) };
+      const ev: HermesLimitEvent = { at, profile: f.profile, text: truncate(maskSecrets(msg.trim()), 240) };
       if (model) ev.model = model;
       if (provider) ev.provider = provider;
       limits.push(ev);

@@ -80,3 +80,24 @@ describe('painel do Hermes: tempo e links', () => {
     expect(hermesLinks({})).toBeUndefined();
   });
 });
+
+describe('limites no agent.log', () => {
+  it('não confunde os milissegundos da hora com HTTP 429', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'hb-lim-'));
+    mkdirSync(join(dir, 'logs'));
+    writeFileSync(
+      join(dir, 'logs', 'agent.log'),
+      [
+        '2026-11-01 21:36:15,429 WARNING tools.registry: check_fn check_browser_snapshot_requirements returned False',
+        '2026-11-01 21:40:02,118 WARNING agent: API call failed error_type=RateLimitError provider=gemini model=gemini-3.5-flash HTTP 429',
+      ].join('\n'),
+    );
+    const r = readAgentLogs(dir, [], '2026-11-01');
+    expect(r.limits).toHaveLength(1);
+    expect(r.limits[0]!.text).toContain('RateLimitError');
+    expect(r.limits[0]!.text.startsWith('WARNING')).toBe(true);
+  });
+});
